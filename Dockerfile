@@ -1,14 +1,26 @@
+FROM python:3.11-slim as builder
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --user --no-cache-dir -r requirements.txt
+
 FROM python:3.11-slim
 
 WORKDIR /app
 
-RUN pip install --upgrade pip
+RUN useradd -m sulgx && chown -R sulgx /app
+RUN apt-get update && apt-get install -y gosu && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY --from=builder /root/.local /home/sulgx/.local
+ENV PATH=/home/sulgx/.local/bin:$PATH
 
-COPY . .
+COPY --chown=sulgx . .
+
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 EXPOSE 8000
 
-CMD ["python", "main.py"]
+HEALTHCHECK --interval=30s --timeout=5s CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+
+ENTRYPOINT ["/entrypoint.sh"]
