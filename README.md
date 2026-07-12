@@ -4,7 +4,6 @@
 - **Raw Downlink Response:** GET responses without chunked encoding for full Xray‑core compatibility.
 - **Dynamic XHTTP Router:** Automatic request dispatch using inbound’s custom path – no extra config.
 - **Auto ALPN Injection:** Adds `alpn=http/1.1` automatically for XHTTP links when ALPN is missing.
-- **XHTTP Diagnostic Tool:** Standalone script (`xhttp_diag.py`) simulates a client to test latency and throughput.
 - **Security Enhancement:** Public IP scanner WebSocket endpoint disabled by default to avoid abuse.
 - **Performance Optimizations:** Added `uvloop`, updated Dockerfile and platform settings for smoother deployments.
 
