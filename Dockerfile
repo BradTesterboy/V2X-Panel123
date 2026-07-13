@@ -1,3 +1,9 @@
+FROM python:3.11-slim AS builder
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --user --no-cache-dir -r requirements.txt
+
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -5,12 +11,11 @@ WORKDIR /app
 RUN useradd -m sulgx && chown -R sulgx /app
 RUN apt-get update && apt-get install -y gosu && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --user --no-cache-dir -r requirements.txt
-
-RUN chown -R sulgx: /home/sulgx/.local
+COPY --from=builder /root/.local /home/sulgx/.local
+RUN chown -R sulgx:sulgx /home/sulgx/.local
 
 ENV PATH=/home/sulgx/.local/bin:$PATH
+ENV HOME=/home/sulgx
 
 COPY --chown=sulgx . .
 
