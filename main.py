@@ -88,12 +88,15 @@ async def resolve_domain_to_ip(host: str) -> Optional[str]:
         return _domain_ip_cache[host]
     try:
         loop = asyncio.get_event_loop()
-        addrs = await loop.getaddrinfo(host, 443, family=socket.AF_INET)
+        addrs = await asyncio.wait_for(
+            loop.getaddrinfo(host, 443, family=socket.AF_INET),
+            timeout=3.0
+        )
         if addrs:
             ip = addrs[0][4][0]
             _domain_ip_cache[host] = ip
             return ip
-    except Exception:
+    except (asyncio.TimeoutError, Exception):
         pass
     _domain_ip_cache[host] = None
     return None
@@ -177,12 +180,6 @@ def is_domain_blocked(host: str) -> bool:
 
 # ── Quota Gate (Adaptive) ──────────────────────────────────────────────────
 class QuotaGate:
-    """
-    Adaptive batch quota checker.
-    Accumulates bytes and flushes when either the batch size
-    or a time threshold is exceeded. Batch size auto-adjusts
-    based on actual throughput using simple EWMA.
-    """
     def __init__(self, uid: str):
         self.uid = uid
         self.pending = 0
@@ -216,7 +213,6 @@ class QuotaGate:
         return True
 
     async def check(self) -> bool:
-        """Flush pending bytes and return True if quota still OK."""
         if self.pending:
             flush, self.pending = self.pending, 0
             ok = await check_quota(self.uid, flush)
@@ -234,7 +230,6 @@ class QuotaGate:
         return self.ok
 
     async def flush(self) -> bool:
-        """Force flush remaining pending bytes (usually on connection teardown)."""
         if self.pending:
             flush, self.pending = self.pending, 0
             self.ok = self.ok and await check_quota(self.uid, flush)
@@ -298,10 +293,6 @@ async def parse_vless_header_extended(chunk: bytes):
         raise ValueError(f"Unknown address type: {addr_type}")
     return command, address, port, chunk[pos:]
 async def parse_vless_header_with_uuid(chunk: bytes):
-    """
-    Returns (uuid_str, command, address, port, payload)
-    uuid_str: VLESS user UUID (standard format)
-    """
     if len(chunk) < 24:
         raise ValueError("VLESS header too small")
     pos = 1
@@ -414,7 +405,6 @@ if CONFIG["database_url"] and HAS_POSTGRES:
                     id SERIAL PRIMARY KEY, url TEXT NOT NULL
                 );
             """)
-            # Ensure all new and legacy columns exist
             for col, col_type in [
                 ("tfo", "BOOLEAN DEFAULT FALSE"),
                 ("ech_enabled", "BOOLEAN DEFAULT FALSE"),
@@ -559,7 +549,6 @@ else:
         """)
         await db_conn.commit()
 
-        # Extended columns check – safe to run even if already present
         extended_columns = [
             ("smux_enabled", "INTEGER DEFAULT 0"),
             ("ip_limit", "INTEGER DEFAULT 0"),
@@ -571,7 +560,6 @@ else:
         for col, col_def in extended_columns:
             await ensure_column_sqlite("links", col, col_def)
 
-        # Legacy columns
         legacy_columns = [
             ("tfo", "INTEGER DEFAULT 0"),
             ("ech_enabled", "INTEGER DEFAULT 0"),
@@ -591,7 +579,6 @@ else:
         for col, col_def in legacy_columns:
             await ensure_column_sqlite("links", col, col_def)
 
-        # Ensure other table columns
         await ensure_column_sqlite("daily_traffic", "uid", "TEXT DEFAULT ''")
         await ensure_column_sqlite("custom_addresses", "flag", "TEXT DEFAULT ''")
         await ensure_column_sqlite("profile_addresses", "flag", "TEXT DEFAULT ''")
@@ -732,9 +719,9 @@ async def load_initial_data():
         async with LINKS_LOCK:
             LINKS[default_uuid] = default_link
         await db_execute(
-            "INSERT INTO links (uid, label, limit_bytes, max_connections, created_at, active, expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment, ip_profile_id, naming_mode, tfo, ech_enabled, ech_sni, ech_doh, fragment_mode, fragment_length, fragment_interval, allow_insecure, random_path, enable_ipv6, smux_enabled, ip_limit, protocol, fingerprint, alpn, port) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            "INSERT INTO links (uid, label, limit_bytes, max_connections, created_at, active, expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment, ip_profile_id, naming_mode, tfo, ech_enabled, ech_sni, ech_doh, fragment_mode, fragment_length, fragment_interval, allow_insecure, random_path, enable_ipv6, smux_enabled, ip_limit, protocol, fingerprint, alpn, port) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)",
-            (default_uuid, "This Server is Free", 0, 0, now, 1, None,
+            "INSERT INTO links (uid, label, limit_bytes, used_bytes, max_connections, created_at, active, expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment, ip_profile_id, naming_mode, tfo, ech_enabled, ech_sni, ech_doh, fragment_mode, fragment_length, fragment_interval, allow_insecure, random_path, enable_ipv6, smux_enabled, ip_limit, protocol, fingerprint, alpn, port) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO links (uid, label, limit_bytes, used_bytes, max_connections, created_at, active, expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment, ip_profile_id, naming_mode, tfo, ech_enabled, ech_sni, ech_doh, fragment_mode, fragment_length, fragment_interval, allow_insecure, random_path, enable_ipv6, smux_enabled, ip_limit, protocol, fingerprint, alpn, port) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33)",
+            (default_uuid, "This Server is Free", 0, 0, 0, now, 1, None,
              "", "", "", "chrome",
              "#39ff14", "", "", "", "default",
              0, 0, "", "",
@@ -1318,8 +1305,8 @@ async def telegram_webhook(request: Request):
                         LINKS[uid] = link_data
                     
                     await db_execute(
-                        "INSERT INTO links (uid, label, limit_bytes, used_bytes, max_connections, created_at, active, expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment, ip_profile_id, naming_mode, tfo, ech_enabled, ech_sni, ech_doh, fragment_mode, fragment_length, fragment_interval, allow_insecure, random_path, enable_ipv6, smux_enabled, ip_limit, protocol, fingerprint, alpn, port) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                        "INSERT INTO links (uid, label, limit_bytes, used_bytes, max_connections, created_at, active, expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment, ip_profile_id, naming_mode, tfo, ech_enabled, ech_sni, ech_doh, fragment_mode, fragment_length, fragment_interval, allow_insecure, random_path, enable_ipv6, smux_enabled, ip_limit, protocol, fingerprint, alpn, port) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)",
+                        "INSERT INTO links (uid, label, limit_bytes, used_bytes, max_connections, created_at, active, expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment, ip_profile_id, naming_mode, tfo, ech_enabled, ech_sni, ech_doh, fragment_mode, fragment_length, fragment_interval, allow_insecure, random_path, enable_ipv6, smux_enabled, ip_limit, protocol, fingerprint, alpn, port) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        "INSERT INTO links (uid, label, limit_bytes, used_bytes, max_connections, created_at, active, expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment, ip_profile_id, naming_mode, tfo, ech_enabled, ech_sni, ech_doh, fragment_mode, fragment_length, fragment_interval, allow_insecure, random_path, enable_ipv6, smux_enabled, ip_limit, protocol, fingerprint, alpn, port) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33)",
                         (uid, label, link_data["limit_bytes"], link_data["used_bytes"], link_data["max_connections"], now, link_data["active"], expires,
                          link_data["custom_path"], link_data["custom_sni"], link_data["custom_host"], link_data["custom_fp"],
                          link_data["color"], link_data["flag"], link_data["fragment"], link_data["ip_profile_id"], link_data["naming_mode"],
@@ -1547,14 +1534,16 @@ async def telegram_reporter():
             except Exception:
                 pass
 
-def get_domain() -> str:
-    domain = (
-        os.environ.get("DOMAIN") or
-        os.environ.get("RENDER_EXTERNAL_URL") or
-        os.environ.get("RAILWAY_PUBLIC_DOMAIN") or
-        "localhost"
-    )
-    return domain.replace("https://", "").replace("http://", "")
+def get_domain(request: Optional[Request] = None) -> str:
+    if request and request.headers.get("host"):
+        host = request.headers["host"].split(":")[0]
+        if host not in ("localhost", "127.0.0.1", "0.0.0.0", "::1"):
+            return host
+    for var in ("DOMAIN", "RAILWAY_PUBLIC_DOMAIN", "RENDER_EXTERNAL_URL"):
+        val = os.environ.get(var)
+        if val:
+            return val.replace("https://", "").replace("http://", "").rstrip("/")
+    return "localhost"
 
 def validate_address(addr: str) -> bool:
     try:
@@ -1592,11 +1581,11 @@ def get_effective_path(link: dict) -> str:
         return custom
     return DEFAULT_PATH if DEFAULT_PATH else "/ws/{uid}"
 
-def generate_vless_link(uid: str, remark: str = "SulgX", address: str = None, extra: dict = None) -> str:
+def generate_vless_link(uid: str, remark: str = "SulgX", address: str = None, extra: dict = None, server_domain: str = None) -> str:
     cache_key = f"{uid}:{remark}:{address}:{json.dumps(extra) if extra else ''}"
     if cache_key in link_cache and link_cache[cache_key]["expires"] > time.time():
         return link_cache[cache_key]["link"]
-    domain = get_domain()
+    domain = server_domain or get_domain()
     addr = address if address else domain
     path = get_effective_path(extra) if extra else DEFAULT_PATH
     path = path.replace("{uid}", uid)
@@ -2622,10 +2611,10 @@ async def restore_backup(request: Request, _=Depends(require_auth)):
             alpn = link.get("alpn", "")
             port = int(link.get("port") or 443)
             await db_execute(
-                "INSERT INTO links (uid, label, limit_bytes, used_bytes, max_connections, created_at, active, expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment, ip_profile_id, naming_mode, tfo, ech_enabled, ech_sni, ech_doh, fragment_mode, fragment_length, fragment_interval, allow_insecure, random_path, enable_ipv6, smux_enabled, ip_limit, protocol, fingerprint, alpn, port) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                "INSERT INTO links (uid, label, limit_bytes, used_bytes, max_connections, created_at, active, expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment, ip_profile_id, naming_mode, tfo, ech_enabled, ech_sni, ech_doh, fragment_mode, fragment_length, fragment_interval, allow_insecure, random_path, enable_ipv6, smux_enabled, ip_limit, protocol, fingerprint, alpn, port) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)",
-                (uid, label, limit_bytes, used_bytes, max_conn, created_at, active, expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment, ip_profile_id, naming_mode, tfo, ech_enabled, ech_sni, ech_doh, fragment_mode, fragment_length, fragment_interval, allow_insecure, random_path, enable_ipv6, smux_enabled, ip_limit, protocol, fingerprint, alpn, port),
-            )
+    "INSERT INTO links (uid, label, limit_bytes, used_bytes, max_connections, created_at, active, expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment, ip_profile_id, naming_mode, tfo, ech_enabled, ech_sni, ech_doh, fragment_mode, fragment_length, fragment_interval, allow_insecure, random_path, enable_ipv6, smux_enabled, ip_limit, protocol, fingerprint, alpn, port) VALUES (?,?,?,?,?,?,1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    "INSERT INTO links (uid, label, limit_bytes, used_bytes, max_connections, created_at, active, expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment, ip_profile_id, naming_mode, tfo, ech_enabled, ech_sni, ech_doh, fragment_mode, fragment_length, fragment_interval, allow_insecure, random_path, enable_ipv6, smux_enabled, ip_limit, protocol, fingerprint, alpn, port) VALUES ($1,$2,$3,$4,$5,$6,TRUE,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)",
+    (uid, label, limit_bytes, 0, max_conn, now, expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment, ip_profile_id, naming_mode, tfo, ech_enabled, ech_sni, ech_doh, fragment_mode, fragment_length, fragment_interval, allow_insecure, random_path, enable_ipv6, smux_enabled, ip_limit, protocol, fingerprint, alpn, port),
+)
             async with LINKS_LOCK:
                 LINKS[uid] = {
                     "uid": uid, "label": label, "limit_bytes": limit_bytes, "used_bytes": used_bytes,
@@ -2743,9 +2732,9 @@ async def create_link(request: Request, _=Depends(require_auth)):
     async with LINKS_LOCK:
         LINKS[uid] = link_data
     await db_execute(
-        "INSERT INTO links (uid, label, limit_bytes, max_connections, created_at, active, expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment, ip_profile_id, naming_mode, tfo, ech_enabled, ech_sni, ech_doh, fragment_mode, fragment_length, fragment_interval, allow_insecure, random_path, enable_ipv6, smux_enabled, ip_limit, protocol, fingerprint, alpn, port) VALUES (?,?,?,?,?,1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        "INSERT INTO links (uid, label, limit_bytes, max_connections, created_at, active, expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment, ip_profile_id, naming_mode, tfo, ech_enabled, ech_sni, ech_doh, fragment_mode, fragment_length, fragment_interval, allow_insecure, random_path, enable_ipv6, smux_enabled, ip_limit, protocol, fingerprint, alpn, port) VALUES ($1,$2,$3,$4,$5,TRUE,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)",
-        (uid, label, limit_bytes, max_conn, now, expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment, ip_profile_id, naming_mode, tfo, ech_enabled, ech_sni, ech_doh, fragment_mode, fragment_length, fragment_interval, allow_insecure, random_path, enable_ipv6, smux_enabled, ip_limit, protocol, fingerprint, alpn, port),
+        "INSERT INTO links (uid, label, limit_bytes, used_bytes, max_connections, created_at, active, expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment, ip_profile_id, naming_mode, tfo, ech_enabled, ech_sni, ech_doh, fragment_mode, fragment_length, fragment_interval, allow_insecure, random_path, enable_ipv6, smux_enabled, ip_limit, protocol, fingerprint, alpn, port) VALUES (?,?,?,?,?,?,1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO links (uid, label, limit_bytes, used_bytes, max_connections, created_at, active, expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment, ip_profile_id, naming_mode, tfo, ech_enabled, ech_sni, ech_doh, fragment_mode, fragment_length, fragment_interval, allow_insecure, random_path, enable_ipv6, smux_enabled, ip_limit, protocol, fingerprint, alpn, port) VALUES ($1,$2,$3,$4,$5,$6,TRUE,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33)",
+        (uid, label, limit_bytes, 0, max_conn, now, expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment, ip_profile_id, naming_mode, tfo, ech_enabled, ech_sni, ech_doh, fragment_mode, fragment_length, fragment_interval, allow_insecure, random_path, enable_ipv6, smux_enabled, ip_limit, protocol, fingerprint, alpn, port),
     )
     extra = {"custom_path": custom_path, "custom_sni": custom_sni, "custom_host": custom_host, "custom_fp": custom_fp, "fragment": fragment,
              "tfo": tfo, "ech_enabled": ech_enabled, "ech_sni": ech_sni, "ech_doh": ech_doh,
