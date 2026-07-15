@@ -2629,7 +2629,6 @@ async def restore_backup(request: Request, _=Depends(require_auth)):
                     "protocol": protocol, "fingerprint": fingerprint, "alpn": alpn, "port": port,
                 }
     return {"ok": True}
-
 @app.post("/api/links")
 @limiter.limit("10/minute")
 async def create_link(request: Request, _=Depends(require_auth)):
@@ -2743,6 +2742,7 @@ async def create_link(request: Request, _=Depends(require_auth)):
              "smux_enabled": smux_enabled, "ip_limit": ip_limit,
              "protocol": protocol, "fingerprint": fingerprint, "alpn": alpn, "port": port}
     log_event("Inbound", f"Created inbound {label} ({uid})")
+    domain = get_domain(request)
     return {
         "uuid": uid, "label": label, "limit_bytes": limit_bytes, "used_bytes": 0,
         "max_connections": max_conn, "active": True, "created_at": now,
@@ -2753,15 +2753,16 @@ async def create_link(request: Request, _=Depends(require_auth)):
         "allow_insecure": bool(allow_insecure), "random_path": bool(random_path), "enable_ipv6": bool(enable_ipv6),
         "smux_enabled": bool(smux_enabled), "ip_limit": ip_limit,
         "protocol": protocol, "fingerprint": fingerprint, "alpn": alpn, "port": port,
-        "vless_link": generate_vless_link(uid, remark=f"SulgX-{label}", extra=extra),
+        "vless_link": generate_vless_link(uid, remark=f"SulgX-{label}", extra=extra, server_domain=domain),
     }
 
 
 @app.get("/api/links")
-async def list_links(_=Depends(require_auth)):
+async def list_links(request: Request, _=Depends(require_auth)):
     async with LINKS_LOCK:
         items = list(LINKS.values())
     items.sort(key=lambda x: x["created_at"], reverse=True)
+    domain = get_domain(request)
     result = []
     for row in items:
         uid = row["uid"]
@@ -2807,7 +2808,7 @@ async def list_links(_=Depends(require_auth)):
             "ip_profile_id": row.get("ip_profile_id", ""),
             "naming_mode": row.get("naming_mode", "default"),
             "current_connections": await count_connections_for_link(uid),
-            "vless_link": generate_vless_link(uid, remark=f"SulgX-{row['label']}", extra=extra),
+            "vless_link": generate_vless_link(uid, remark=f"SulgX-{row['label']}", extra=extra, server_domain=domain),
             "tfo": bool(extra["tfo"]),
             "ech_enabled": bool(extra["ech_enabled"]),
             "ech_sni": extra["ech_sni"],
