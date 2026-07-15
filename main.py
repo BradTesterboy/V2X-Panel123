@@ -3692,6 +3692,10 @@ async def user_dashboard(uid: str, request: Request):
     limit = link["limit_bytes"]
     usage_percent = 0 if limit == 0 else min(100, round(used / limit * 100, 1))
     usage_bar_color = "#4ade80" if usage_percent < 80 else ("#fbbf24" if usage_percent < 95 else "#f87171")
+
+    # دریافت خودکار دامنه از درخواست جاری (رفع مشکل localhost)
+    domain = get_domain(request)
+
     vless_link = generate_vless_link(uid, remark=link["label"], server_domain=domain)
     sub_url = f"https://{domain}/sub/{uid}"
     clash_url = f"https://{domain}/sub/{uid}/clash"
