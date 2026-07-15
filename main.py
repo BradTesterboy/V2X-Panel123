@@ -1628,8 +1628,7 @@ def generate_vless_link(uid: str, remark: str = "SulgX", address: str = None, ex
         mode = protocol.replace("xhttp-", "")
 
         if mode != "stream-one":
-            session_id = secrets.token_hex(8)
-            base_path = f"{base_path}/{session_id}"
+            base_path = f"{base_path}/{uid}"
 
         params = {
             "encryption": "none", "security": "tls", "type": "xhttp",
