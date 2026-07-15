@@ -4826,7 +4826,6 @@ async def test_inbound(uid: str, request: Request, _=Depends(require_auth)):
         "reachable_count": len(reachable),
         "results": sorted_results
     }
-
 # ═══════════════════════════════════════════════════════════════
 # XHTTP session management
 # ═══════════════════════════════════════════════════════════════
@@ -4867,10 +4866,15 @@ async def _teardown_xhttp(session_id: str):
     # Unblock the downlink generator (waiting on down_q.get())
     down_q = sess.get("down_q")
     if down_q:
-        try:
-            down_q.put_nowait(None)
-        except asyncio.QueueFull:
-            pass
+        while True:
+            try:
+                down_q.put_nowait(None)
+                break
+            except asyncio.QueueFull:
+                try:
+                    down_q.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
     # Remove the connection record
     connections.pop(sess.get("conn_id"), None)
     logger.info(f"XHTTP session [{session_id[:8]}] closed")
@@ -5195,6 +5199,19 @@ async def websocket_tunnel(websocket: WebSocket, uuid: str):
             await websocket.close(code=1008, reason="blocked domain")
             return
 
+        # ---------- SSRF Protection (added) ----------
+        try:
+            ip_addr = await resolve_domain_to_ip(address)
+            if ip_addr:
+                ip_obj = ipaddress.ip_address(ip_addr)
+                if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local:
+                    await websocket.close(code=1008, reason="access to private network denied")
+                    log_event("Tunnel", f"Blocked SSRF attempt to {address} from {client_ip}", ip=client_ip)
+                    return
+        except ValueError:
+            pass
+        # -------------------------------------------
+
         conn_id = secrets.token_urlsafe(8)
         now = time.time()
         async with connections_lock:
@@ -5263,6 +5280,7 @@ async def websocket_tunnel(websocket: WebSocket, uuid: str):
 @app.websocket("/{rand}/ws/{uuid}")
 async def websocket_tunnel_random(websocket: WebSocket, rand: str, uuid: str):
     await websocket_tunnel(websocket, uuid)
+
 # ═══════════════════════════════════════════════════════════════
 # XHTTP Endpoints – Unified handshake via down_q, no separate queue
 # ═══════════════════════════════════════════════════════════════
@@ -5318,7 +5336,7 @@ class RawDownlinkResponse:
             await send({"type": "http.response.body", "body": b"", "more_body": False})
             await _teardown_xhttp(self.session_id)
 
-@app.get("/api/xhttp/{session_id}")
+@app.get("/xhttp/{session_id}")
 async def xhttp_downlink(session_id: str, request: Request):
     ensure_xhttp_reaper()
     ip = get_real_remote_address(request)
@@ -5383,7 +5401,7 @@ async def xhttp_downlink(session_id: str, request: Request):
     }
     return StreamingResponse(downlink_gen(), headers=resp_headers, media_type="application/octet-stream")
 
-@app.post("/api/xhttp/{session_id}/{seq}")
+@app.post("/xhttp/{session_id}/{seq}")
 async def xhttp_packet_up(session_id: str, seq: int, request: Request):
     ensure_xhttp_reaper()
     ip = get_real_remote_address(request)
@@ -5432,8 +5450,25 @@ async def xhttp_packet_up(session_id: str, seq: int, request: Request):
             await _teardown_xhttp(session_id)
             raise HTTPException(status_code=403, detail="ip limit reached")
 
+        # SSRF protection
+        try:
+            ip_addr = await resolve_domain_to_ip(target_addr)
+            if ip_addr and ipaddress.ip_address(ip_addr).is_private:
+                await _teardown_xhttp(session_id)
+                raise HTTPException(status_code=403, detail="access to private network denied")
+        except ValueError:
+            pass
+
         sess["uuid"] = user_uuid
         connections[sess["conn_id"]]["uuid"] = user_uuid
+
+        gate = QuotaGate(user_uuid)
+        if payload:
+            if not await gate.add(len(payload)):
+                await _teardown_xhttp(session_id)
+                raise HTTPException(status_code=403, detail="quota exceeded")
+        sess["quota_gate"] = gate
+        sess["seq_lock"] = asyncio.Lock()
 
         try:
             reader, writer = await asyncio.wait_for(
@@ -5444,7 +5479,6 @@ async def xhttp_packet_up(session_id: str, seq: int, request: Request):
             sess["writer"] = writer
             sess["tcp_open"] = True
 
-            await sess["down_q"].put(b"\x00\x00")
             sess["tunnel_ready"].set()
             sess["downlink_task"] = asyncio.create_task(
                 _pump_tcp_to_queue(session_id, user_uuid, reader, sess["down_q"])
@@ -5461,25 +5495,30 @@ async def xhttp_packet_up(session_id: str, seq: int, request: Request):
             await _teardown_xhttp(session_id)
             raise HTTPException(status_code=502, detail=str(e))
     else:
-        writer = sess["writer"]
-        if seq == sess["next_seq"]:
-            writer.write(body)
-            await writer.drain()
-            sess["next_seq"] += 1
-            while sess["next_seq"] in sess["seq_buf"]:
-                pending = sess["seq_buf"].pop(sess["next_seq"])
-                writer.write(pending)
-                await writer.drain()
+        gate = sess.get("quota_gate")
+        if gate and not await gate.add(len(body)):
+            await _teardown_xhttp(session_id)
+            raise HTTPException(status_code=403, detail="quota exceeded")
+        seq_lock = sess["seq_lock"]
+        async with seq_lock:
+            if seq == sess["next_seq"]:
+                sess["writer"].write(body)
+                await sess["writer"].drain()
                 sess["next_seq"] += 1
-        else:
-            if len(sess["seq_buf"]) >= 30:
-                await _teardown_xhttp(session_id)
-                raise HTTPException(status_code=400, detail="too many out-of-order packets")
-            sess["seq_buf"][seq] = body
+                while sess["next_seq"] in sess["seq_buf"]:
+                    pending = sess["seq_buf"].pop(sess["next_seq"])
+                    sess["writer"].write(pending)
+                    await sess["writer"].drain()
+                    sess["next_seq"] += 1
+            else:
+                if len(sess["seq_buf"]) >= 30:
+                    await _teardown_xhttp(session_id)
+                    raise HTTPException(status_code=400, detail="too many out-of-order packets")
+                sess["seq_buf"][seq] = body
 
     return Response(status_code=200)
 
-@app.post("/api/xhttp/{session_id}")
+@app.post("/xhttp/{session_id}")
 async def xhttp_stream_up(session_id: str, request: Request):
     ensure_xhttp_reaper()
     ip = get_real_remote_address(request)
@@ -5530,9 +5569,19 @@ async def xhttp_stream_up(session_id: str, request: Request):
                 await _teardown_xhttp(session_id)
                 raise HTTPException(status_code=403, detail="ip limit reached")
 
+            # SSRF protection
+            try:
+                ip_addr = await resolve_domain_to_ip(target_addr)
+                if ip_addr and ipaddress.ip_address(ip_addr).is_private:
+                    await _teardown_xhttp(session_id)
+                    raise HTTPException(status_code=403, detail="access to private network denied")
+            except ValueError:
+                pass
+
             sess["uuid"] = user_uuid
             connections[sess["conn_id"]]["uuid"] = user_uuid
             gate = QuotaGate(user_uuid)
+            sess["quota_gate"] = gate
 
             try:
                 reader, writer = await asyncio.wait_for(
@@ -5542,17 +5591,17 @@ async def xhttp_stream_up(session_id: str, request: Request):
                 sess["reader"] = reader
                 sess["writer"] = writer
                 sess["tcp_open"] = True
-
-                await sess["down_q"].put(b"\x00\x00")
                 sess["tunnel_ready"].set()
                 sess["downlink_task"] = asyncio.create_task(
                     _pump_tcp_to_queue(session_id, user_uuid, reader, sess["down_q"])
                 )
 
-                if not await check_quota(user_uuid, len(chunk)):
+                # Only count payload length, not the full VLESS header
+                actual_payload_len = len(payload)
+                if not await check_quota(user_uuid, actual_payload_len):
                     await _teardown_xhttp(session_id)
                     raise HTTPException(status_code=403, detail="quota")
-                await add_usage(user_uuid, len(chunk))
+                await add_usage(user_uuid, actual_payload_len)
 
                 stats["total_requests"] += 1
                 logger.info(f"XHTTP stream-up session [{session_id[:8]}] uid={user_uuid[:8]} -> {target_addr}:{target_port}")
@@ -5611,6 +5660,19 @@ async def xhttp_stream_one(base_path: str, request: Request):
     if not is_ip_allowed(link, user_uuid, ip):
         raise HTTPException(status_code=403, detail="ip limit reached")
 
+    # SSRF protection
+    try:
+        ip_addr = await resolve_domain_to_ip(target_addr)
+        if ip_addr and ipaddress.ip_address(ip_addr).is_private:
+            raise HTTPException(status_code=403, detail="access to private network denied")
+    except ValueError:
+        pass
+
+    gate = QuotaGate(user_uuid)
+    if payload:
+        if not await gate.add(len(payload)):
+            raise HTTPException(status_code=403, detail="quota exceeded")
+
     try:
         reader, writer = await asyncio.wait_for(
             asyncio.open_connection(target_addr, target_port), timeout=TCP_CONNECT_TIMEOUT
@@ -5637,12 +5699,12 @@ async def xhttp_stream_one(base_path: str, request: Request):
         "down_q": down_q,
         "last_seen": time.time(), "conn_id": conn_id,
         "tcp_open": True, "closed": False,
+        "quota_gate": gate,
+        "handshake_sent": False,
     }
     async with XHTTP_LOCK:
         xhttp_sessions[session_id] = sess
 
-    # Put handshake FIRST, then start the pump task
-    await down_q.put(b"\x00\x00")
     sess["downlink_task"] = asyncio.create_task(
         _pump_tcp_to_queue(session_id, user_uuid, reader, down_q)
     )
@@ -5650,10 +5712,9 @@ async def xhttp_stream_one(base_path: str, request: Request):
 
     async def downlink_gen():
         try:
-            # tcp_open is already True, so no need to wait, but the loop is harmless.
-            while not sess.get("tcp_open") and not sess.get("closed"):
-                await asyncio.sleep(0.1)
-
+            if not sess["handshake_sent"]:
+                yield b"\x00\x00"
+                sess["handshake_sent"] = True
             while True:
                 chunk = await down_q.get()
                 if chunk is None:
@@ -9822,7 +9883,15 @@ async def dynamic_xhttp_router(full_path: str, request: Request):
     if default_bp:
         base_paths.add(default_bp)
 
-    # Find the longest matching base path (more specific first)
+    # Check for exact base path match (no session ID) – used by stream-one
+    for bp in base_paths:
+        if full_path.strip("/") == bp:
+            if request.method == "POST":
+                return await xhttp_stream_one(bp, request)
+            # For other methods on the base path we can return 405 or ignore
+            raise HTTPException(status_code=405, detail="Method Not Allowed")
+
+    # Find the longest matching base path that has additional path segments
     matched_base = None
     for bp in sorted(base_paths, key=lambda x: -len(x)):
         if full_path.startswith(bp + "/"):
