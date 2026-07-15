@@ -1619,21 +1619,21 @@ def generate_vless_link(uid: str, remark: str = "SulgX", address: str = None, ex
         if alpn:
             params["alpn"] = alpn
     else:
-        base_path = extra.get("custom_path") if extra and extra.get("custom_path") else DEFAULT_XHTTP_PATH
-        if not base_path.startswith("/"):
-            base_path = "/" + base_path
-        if base_path.endswith("/"):
-            base_path = base_path[:-1]
+    base_path = extra.get("custom_path") if extra and extra.get("custom_path") else DEFAULT_XHTTP_PATH
+    if not base_path.startswith("/"):
+        base_path = "/" + base_path
+    if base_path.endswith("/"):
+        base_path = base_path[:-1]
 
-        mode = protocol.replace("xhttp-", "")
+    mode = protocol.replace("xhttp-", "")
 
-        if mode != "stream-one":
-            base_path = f"{base_path}/{uid}"
+    if mode not in ("stream-one", "auto"):
+        base_path = f"{base_path}/{mode}/{uid}"
 
-        params = {
-            "encryption": "none", "security": "tls", "type": "xhttp",
-            "mode": mode, "host": host, "path": base_path, "sni": sni
-        }
+    params = {
+        "encryption": "none", "security": "tls", "type": "xhttp",
+        "mode": mode, "host": host, "path": base_path, "sni": sni
+    }
         if fingerprint:
             params["fp"] = fingerprint
         if alpn:
@@ -9861,10 +9861,12 @@ async def panel_page(request: Request):
 async def dynamic_xhttp_router(full_path: str, request: Request):
     """
     Catch‑all router for XHTTP traffic.
-    Matches incoming paths against every active inbound's custom XHTTP path
-    (or the default) and dispatches to the appropriate XHTTP handler.
+    Handles three path formats:
+      - stream-one:        POST <base_path>                         (exact base path)
+      - stream-up/packet-up:
+           <base_path>/<mode>/<user_uuid>/<session_id>[/<seq>]
+      - legacy (no mode):  <base_path>/<session_id>[/<seq>]         (kept for compatibility)
     """
-    # Collect all valid XHTTP base paths from active inbounds
     base_paths = set()
     async with LINKS_LOCK:
         for uid, link in LINKS.items():
@@ -9877,20 +9879,16 @@ async def dynamic_xhttp_router(full_path: str, request: Request):
                 if bp:
                     base_paths.add(bp)
 
-    # Always consider the default XHTTP path (may be empty if not set)
     default_bp = DEFAULT_XHTTP_PATH.strip("/")
     if default_bp:
         base_paths.add(default_bp)
 
-    # Check for exact base path match (no session ID) – used by stream-one
     for bp in base_paths:
         if full_path.strip("/") == bp:
             if request.method == "POST":
                 return await xhttp_stream_one(bp, request)
-            # For other methods on the base path we can return 405 or ignore
             raise HTTPException(status_code=405, detail="Method Not Allowed")
 
-    # Find the longest matching base path that has additional path segments
     matched_base = None
     for bp in sorted(base_paths, key=lambda x: -len(x)):
         if full_path.startswith(bp + "/"):
@@ -9900,9 +9898,17 @@ async def dynamic_xhttp_router(full_path: str, request: Request):
     if not matched_base:
         raise HTTPException(status_code=404)
 
-    # Extract the remainder after the base path
     remaining = full_path[len(matched_base):].strip("/")
     parts = remaining.split("/")
+
+    VALID_MODES = {"stream-up", "packet-up", "stream-down"}
+    if parts and parts[0] in VALID_MODES:
+        if len(parts) >= 3:
+            parts = parts[2:]
+        elif len(parts) == 2:
+            parts = []
+        else:
+            parts = parts[1:] 
 
     if len(parts) == 1:
         session_id = parts[0]
@@ -9925,8 +9931,8 @@ async def dynamic_xhttp_router(full_path: str, request: Request):
     else:
         raise HTTPException(status_code=404)
 
+
 if __name__ == "__main__":
-    # Start the server directly (no subprocess) to avoid double‑initialization.
     port = int(os.environ.get("PORT", CONFIG.get("port", 8000)))
     logger.info(f"Starting SulgX Panel on port {port}")
     uvicorn.run(
