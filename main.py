@@ -1619,21 +1619,21 @@ def generate_vless_link(uid: str, remark: str = "SulgX", address: str = None, ex
         if alpn:
             params["alpn"] = alpn
     else:
-    base_path = extra.get("custom_path") if extra and extra.get("custom_path") else DEFAULT_XHTTP_PATH
-    if not base_path.startswith("/"):
-        base_path = "/" + base_path
-    if base_path.endswith("/"):
-        base_path = base_path[:-1]
+        base_path = extra.get("custom_path") if extra and extra.get("custom_path") else DEFAULT_XHTTP_PATH
+        if not base_path.startswith("/"):
+            base_path = "/" + base_path
+        if base_path.endswith("/"):
+            base_path = base_path[:-1]
 
-    mode = protocol.replace("xhttp-", "")
+        mode = protocol.replace("xhttp-", "")
 
-    if mode not in ("stream-one", "auto"):
-        base_path = f"{base_path}/{mode}/{uid}"
+        if mode not in ("stream-one", "auto"):
+            base_path = f"{base_path}/{mode}/{uid}"
 
-    params = {
-        "encryption": "none", "security": "tls", "type": "xhttp",
-        "mode": mode, "host": host, "path": base_path, "sni": sni
-    }
+        params = {
+            "encryption": "none", "security": "tls", "type": "xhttp",
+            "mode": mode, "host": host, "path": base_path, "sni": sni
+        }
         if fingerprint:
             params["fp"] = fingerprint
         if alpn:
