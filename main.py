@@ -1582,10 +1582,10 @@ def get_effective_path(link: dict) -> str:
     return DEFAULT_PATH if DEFAULT_PATH else "/ws/{uid}"
 
 def generate_vless_link(uid: str, remark: str = "SulgX", address: str = None, extra: dict = None, server_domain: str = None) -> str:
-    cache_key = f"{uid}:{remark}:{address}:{json.dumps(extra) if extra else ''}"
+    domain = server_domain or get_domain()
+    cache_key = f"{uid}:{remark}:{address}:{domain}:" + (json.dumps(extra) if extra else '')
     if cache_key in link_cache and link_cache[cache_key]["expires"] > time.time():
         return link_cache[cache_key]["link"]
-    domain = server_domain or get_domain()
     addr = address if address else domain
     path = get_effective_path(extra) if extra else DEFAULT_PATH
     path = path.replace("{uid}", uid)
@@ -3612,7 +3612,7 @@ async def create_sub(request: Request, _=Depends(require_auth)):
             "link_ids": [],
         }
     await save_subs()
-    host = get_domain()
+    host = get_domain(request)
     return {
         "sub_id": sub_id,
         **SUBS[sub_id],
@@ -3661,13 +3661,13 @@ async def sub_group_subscription(uuid_key: str, request: Request):
     if sub.get("password_hash"):
         if not pw or not bcrypt.checkpw(pw.encode(), sub["password_hash"].encode()):
             raise HTTPException(status_code=403, detail="wrong password")
-    host = get_domain()
+    host = get_domain(request)
     lines = []
     for lid in sub.get("link_ids", []):
         async with LINKS_LOCK:
             link = LINKS.get(lid)
         if link and link["active"]:
-            lines.append(generate_vless_link(lid, remark=link["label"], extra=link))
+            lines.append(generate_vless_link(lid, remark=link["label"], extra=link, server_domain=host))
     content = base64.b64encode("\n".join(lines).encode()).decode()
     return Response(content=content, media_type="text/plain")
 
@@ -4025,7 +4025,8 @@ async def user_subscription(uid: str, request: Request):
         "alpn": link.get("alpn", ""),
         "port": link.get("port", 443),
     }
-    sub_content = await generate_subscription_content(link, uid, addresses, extra, status)
+    domain = get_domain(request)
+    sub_content = await generate_subscription_content(link, uid, addresses, extra, status, server_domain=domain)
     encoded = base64.b64encode(sub_content.encode()).decode()
     total_bytes = link["limit_bytes"] if link["limit_bytes"] > 0 else UNLIMITED_QUOTA_BYTES
     expire_ts = int(expires.timestamp()) if expires else 0
@@ -4533,7 +4534,7 @@ def parse_address_entry(entry: str) -> dict:
     return {"address": ip, "name": name, "flag": flag, "sort_number": sort_num}
 
 
-async def generate_subscription_content(link: dict, uid: str, addresses: list, extra: dict = None, status: str = "active") -> str:
+async def generate_subscription_content(link: dict, uid: str, addresses: list, extra: dict = None, status: str = "active", server_domain: str = None) -> str:
     used = link["used_bytes"]; limit = link["limit_bytes"]
     usage_str = f"{_fmt_bytes(used)} / ∞" if limit == 0 else f"{_fmt_bytes(used)} / {_fmt_bytes(limit)}"
     secs_left = seconds_until_expiry(link.get("expires_at"))
@@ -4582,8 +4583,8 @@ async def generate_subscription_content(link: dict, uid: str, addresses: list, e
         if '/' in entry["address"]:
             entry["address"] = entry["address"].split('/')[0]
 
-    status_node = generate_vless_link(uid, remark=full_remark, address="0.0.0.0", extra=extra)
-    server_node = generate_vless_link(uid, remark=f"{flag_emoji}This Service is Free" if flag_emoji else "This Service is Free", extra=extra)
+    status_node = generate_vless_link(uid, remark=full_remark, address="0.0.0.0", extra=extra, server_domain=server_domain)
+    server_node = generate_vless_link(uid, remark=f"{flag_emoji}This Service is Free" if flag_emoji else "This Service is Free", extra=extra, server_domain=server_domain)
     links = [status_node, server_node]
 
     for i, entry in enumerate(address_entries):
@@ -4612,7 +4613,7 @@ async def generate_subscription_content(link: dict, uid: str, addresses: list, e
                     remark = f"{addr_flag_emoji} {remark}"
                 elif flag_emoji:
                     remark = f"{flag_emoji} {remark}"
-        links.append(generate_vless_link(uid, remark=remark, address=addr, extra=extra))
+        links.append(generate_vless_link(uid, remark=remark, address=addr, extra=extra, server_domain=server_domain))
     return "\n".join(links)
 
 def _fmt_bytes(b: int) -> str:
