@@ -829,7 +829,7 @@ async def _keepalive_simple_loop():
         await asyncio.sleep(KEEP_ALIVE_INTERVAL)
         if not KEEP_ALIVE_ENABLED or KEEP_ALIVE_MODE != "simple":
             continue
-        domain = get_domain()
+        domain = get_domain(request)
         if domain == "localhost":
             continue
         try:
@@ -910,7 +910,7 @@ async def set_telegram_webhook():
         if not token_row or not token_row["value"]:
             return
         token = token_row["value"]
-        domain = get_domain()
+        domain = get_domain(request)
         webhook_url = f"https://{domain}/api/tg-webhook"
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(f"https://api.telegram.org/bot{token}/setWebhook", json={"url": webhook_url})
@@ -3692,11 +3692,11 @@ async def user_dashboard(uid: str, request: Request):
     limit = link["limit_bytes"]
     usage_percent = 0 if limit == 0 else min(100, round(used / limit * 100, 1))
     usage_bar_color = "#4ade80" if usage_percent < 80 else ("#fbbf24" if usage_percent < 95 else "#f87171")
-    vless_link = generate_vless_link(uid, remark=link["label"])
-    sub_url = f"https://{get_domain()}/sub/{uid}"
-    clash_url = f"https://{get_domain()}/sub/{uid}/clash"
-    singbox_url = f"https://{get_domain()}/sub/{uid}/singbox"
-    auto_url = f"https://{get_domain()}/sub/{uid}/auto"
+    vless_link = generate_vless_link(uid, remark=link["label"], server_domain=domain)
+    sub_url = f"https://{domain}/sub/{uid}"
+    clash_url = f"https://{domain}/sub/{uid}/clash"
+    singbox_url = f"https://{domain}/sub/{uid}/singbox"
+    auto_url = f"https://{domain}/sub/{uid}/auto"
     qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={quote(sub_url)}"
     expiry_str = "Unlimited ∞" if not expires else expires.strftime("%Y-%m-%d %H:%M (UTC)")
     daily_usage = await db_fetchall(
@@ -4055,7 +4055,7 @@ async def clash_subscription(uid: str, request: Request):
         if not link or not link["active"]:
             raise HTTPException(status_code=404, detail="link not found or disabled")
         link = dict(link)
-    domain = get_domain()
+    domain = get_domain(request)
     ip_profile_id = link.get("ip_profile_id")
     if ip_profile_id:
         async with IP_PROFILES_LOCK:
@@ -4257,7 +4257,7 @@ async def singbox_subscription(uid: str, request: Request):
             raise HTTPException(status_code=404, detail="link not found or disabled")
         link = dict(link)
 
-    domain = get_domain()
+    domain = get_domain(request)
     ip_profile_id = link.get("ip_profile_id")
     if ip_profile_id:
         async with IP_PROFILES_LOCK:
