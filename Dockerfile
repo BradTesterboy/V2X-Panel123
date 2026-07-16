@@ -11,6 +11,16 @@ WORKDIR /app
 RUN useradd -m sulgx && chown -R sulgx /app
 RUN apt-get update && apt-get install -y gosu && rm -rf /var/lib/apt/lists/*
 
+# ---------- Cloudflare WARP ----------
+RUN apt-get update && \
+    apt-get install -y jq curl gnupg lsb-release && \
+    curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | gpg --dearmor -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/cloudflare-client.list && \
+    apt-get update && \
+    apt-get install -y cloudflare-warp && \
+    rm -rf /var/lib/apt/lists/*
+# ----------------------------------------------------
+
 COPY --from=builder /root/.local /home/sulgx/.local
 RUN chown -R sulgx:sulgx /home/sulgx/.local
 
