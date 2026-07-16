@@ -1,21 +1,55 @@
+# Python cache and compiled files
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
 *.pyd
 
+# Virtual environments
 venv/
 .venv/
 env/
 
+# Database files
 panel.db
 *.db
 *.sqlite
 *.sqlite3
 
+# Environment files
 .env
+*.env
 
+# IDE and editor configs
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
 
+# Logs
 logs/
 *.log
+
+# Git repository
+.git/
+.gitignore
+.gitattributes
+
+# GitHub workflows and docs
+.github/
+*.md
+README.md
+
+# Docker files (avoid copying the Dockerfile itself)
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Test and development files
+tests/
+*.test.py
+*.spec.py
+
+# OS files
+.DS_Store
+Thumbs.db
