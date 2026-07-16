@@ -3530,10 +3530,8 @@ async def save_doh_upstreams(request: Request, _=Depends(require_auth)):
     upstreams = body.get("upstreams", [])
     global DOH_UPSTREAMS, DOH_ENABLED
     DOH_UPSTREAMS = [u for u in upstreams if isinstance(u, str) and u.strip().startswith("http")]
-    await db_execute("DELETE FROM doh_upstreams", "DELETE FROM doh_upstreams")
     for u in DOH_UPSTREAMS:
-    await db_execute("INSERT INTO doh_upstreams (url) VALUES (?)",
-                     "INSERT INTO doh_upstreams (url) VALUES ($1)", (u,))
+        await db_execute("INSERT INTO doh_upstreams (url) VALUES (?)", "INSERT INTO doh_upstreams (url) VALUES ($1)", (u,))
     if "enabled" in body:
         DOH_ENABLED = body["enabled"]
         await db_execute(
