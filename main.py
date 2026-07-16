@@ -9744,23 +9744,22 @@ async function loadGeneralSettings(){
     
     const savedTheme = d.theme_color || 'dark'; setPanelTheme(savedTheme);
 
-    // WARP status
-    fetch('/api/warp/status', { cache: 'no-cache' })
-  .then(r => r.json())
-  .then(data => {
-    const card = document.getElementById('card-warp');
-    const input = document.getElementById('set-warp-enabled');
-    if (data.enabled) {
-      card.classList.add('active');
-      card.classList.remove('inactive');
-      input.value = '1';
-    } else {
-      card.classList.remove('active');
-      card.classList.add('inactive');
-      input.value = '0';
-    }
-  })
-  .catch(err => console.error('Failed to fetch WARP status:', err));
+    fetch('/api/warp/status?_=' + Date.now(), { cache: 'no-store' })
+      .then(r => r.json())
+      .then(data => {
+        const card = document.getElementById('card-warp');
+        const input = document.getElementById('set-warp-enabled');
+        if (data.enabled) {
+          card.classList.add('active');
+          card.classList.remove('inactive');
+          input.value = '1';
+        } else {
+          card.classList.remove('active');
+          card.classList.add('inactive');
+          input.value = '0';
+        }
+      })
+      .catch(err => console.error('Failed to fetch WARP status:', err));
 
   } catch(e) { console.error('General Settings Load Error:', e); }
 }
@@ -9791,6 +9790,9 @@ async function saveGeneralSettings(){
   const camouflageUrl = $m('set-camouflage-url').value.trim();
   const subFilename = $m('set-sub-filename').value.trim();
   const panelPrefixVal = $m('set-panel-prefix').value.trim();
+
+  await saveDohUpstreams();
+
   const warpEnabled = document.getElementById('set-warp-enabled').value === '1';
   await fetch('/api/warp/toggle', {
     method: 'POST',
@@ -9798,7 +9800,6 @@ async function saveGeneralSettings(){
     body: JSON.stringify({enabled: warpEnabled})
   });
 
-  await saveDohUpstreams();
   try {
     await authenticatedFetch('/api/settings', {
       method: 'POST',
@@ -9821,11 +9822,10 @@ async function saveGeneralSettings(){
             const newPrefix = panelPrefixVal ? '/' + panelPrefixVal : '';
             window.location.href = newPrefix + '/login';
         }, 600);
-    } else {
-        loadGeneralSettings();
     }
   } catch { toast('Error saving settings', true); }
 }
+
 async function restartApp() {
   if (!confirm('Are you sure you want to restart the application? This will cause a brief downtime.')) return;
   toast('Restarting...');
