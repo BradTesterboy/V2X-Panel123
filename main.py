@@ -7190,7 +7190,7 @@ example.com
         <div style="display:flex;gap:6px;"><button class="btn btn-primary" onclick="saveTelegramSettings()" data-en="Save" data-fa="ذخیره">Save</button><button class="btn btn-outline btn-sm" onclick="testTelegram()" data-en="Test" data-fa="تست">Test</button></div>
       </div>
     </section>
-            <section class="page" id="page-settings">
+    <section class="page" id="page-settings">
       <div class="page-header"><div class="page-title" data-en="Settings" data-fa="تنظیمات">Settings</div></div>
       <div class="card">
         <!-- Login Text -->
