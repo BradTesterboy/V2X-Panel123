@@ -6969,6 +6969,7 @@ textarea.fi { resize: vertical; min-height: 130px; }
       <div style="display:flex;align-items:center;gap:16px;">
         <span class="logo">SulgX</span><span class="version-tag">v1.5.3</span>
         <span id="panel-clock" style="font-weight:600;color:var(--primary);margin-left:8px;font-size:0.9rem;"></span>
+<span id="warp-indicator" style="margin-left:12px; font-size:0.75rem; font-weight:700; padding:2px 10px; border-radius:12px;"></span>
         <nav class="header-nav" id="mainNav">
           <button class="nav-link active" data-page="dashboard">📊 <span data-en="Dashboard" data-fa="داشبورد">Dashboard</span></button>
           <button class="nav-link" data-page="inbounds">📡 <span data-en="Inbounds" data-fa="اینباندها">Inbounds</span></button>
@@ -9667,201 +9668,307 @@ function previewTemplate() {
         previewDiv.style.border = "1px solid #ff4d4f";
     }
 }
-async function loadGeneralSettings(){
-  if (!isAuthenticated || isInitialChecking) return;
-  try {
-    const r = await authenticatedFetch('/api/settings');
-    if(!r.ok) return;
-    const d = await r.json();
-    $m('set-footer').value = d.footer_text || '';
-    $m('set-default-path').value = d.default_path || '';
-    timezoneOffset = parseFloat(d.timezone_offset) || 0;
-    $m('set-default-limit').value = d.default_limit_bytes ? (parseInt(d.default_limit_bytes)/1073741824).toFixed(1) : '';
-    $m('set-default-expiry').value = d.default_expiry_days || '';
-    $m('set-default-maxconn').value = d.default_max_connections || '';
-    $m('set-scanner-timeout').value = d.scanner_timeout || '4';
-    $m('set-monthly-limit').value = d.monthly_limit_gb || '';
-    $m('set-max-scan-ips').value = d.max_scan_ips || '256';
-    $m('set-keep-alive-interval').value = d.keep_alive_interval || '300';
+async function loadGeneralSettings() {
+    if (!isAuthenticated || isInitialChecking) return;
     
-    updateSettingsStatus(d);
-    updateDashboardStatusCards(d);
-    
-    if (d.keep_alive_mode) {
-        setKeepAliveMode(d.keep_alive_mode);
-        $m('set-keepalive-enabled').value = d.keep_alive_enabled === '1' ? '1' : '0';
-        const card = $m('card-keepalive');
-        if (d.keep_alive_enabled === '1') { card.classList.add('active'); card.classList.remove('inactive'); }
-        else { card.classList.add('inactive'); card.classList.remove('active'); }
-    }
-    
-    $m('set-landing-redirect').value = d.landing_redirect || '';
-    $m('set-camouflage-url').value = d.camouflage_url || '';
-    $m('set-sub-filename').value = d.sub_filename || '';
-    $m('set-panel-prefix').value = d.panel_prefix || '';
-    const newPrefix = d.panel_prefix || '';
-    if (window.panelPrefix !== newPrefix) {
-        window.panelPrefix = newPrefix;
-        const newPath = newPrefix ? '/' + newPrefix + '/panel' : '/panel';
-        if (window.location.pathname !== newPath) {
-            window.history.replaceState({}, '', newPath);
+    try {
+        const r = await authenticatedFetch('/api/settings');
+        if (!r.ok) return;
+        
+        const d = await r.json();
+        
+        $m('set-footer').value = d.footer_text || '';
+        $m('set-default-path').value = d.default_path || '';
+        timezoneOffset = parseFloat(d.timezone_offset) || 0;
+        $m('set-default-limit').value = d.default_limit_bytes ? (parseInt(d.default_limit_bytes) / 1073741824).toFixed(1) : '';
+        $m('set-default-expiry').value = d.default_expiry_days || '';
+        $m('set-default-maxconn').value = d.default_max_connections || '';
+        $m('set-scanner-timeout').value = d.scanner_timeout || '4';
+        $m('set-monthly-limit').value = d.monthly_limit_gb || '';
+        $m('set-max-scan-ips').value = d.max_scan_ips || '256';
+        $m('set-keep-alive-interval').value = d.keep_alive_interval || '300';
+        
+        updateSettingsStatus(d);
+        updateDashboardStatusCards(d);
+        
+        if (d.keep_alive_mode) {
+            setKeepAliveMode(d.keep_alive_mode);
+            $m('set-keepalive-enabled').value = d.keep_alive_enabled === '1' ? '1' : '0';
+            const card = $m('card-keepalive');
+            if (d.keep_alive_enabled === '1') { 
+                card.classList.add('active'); 
+                card.classList.remove('inactive'); 
+            } else { 
+                card.classList.add('inactive'); 
+                card.classList.remove('active'); 
+            }
         }
-    }
-    updateDohEndpoint();
-    loadBlockedDomains();
-    if (d.stealth_mode === '1') {
-        const stealthCard = $m('card-stealth');
-        if(stealthCard) { stealthCard.classList.add('active'); stealthCard.classList.remove('inactive'); }
-        $m('set-stealth-mode').value = '1';
-        stealthMode = true;
-        const scannerPage = $m('page-ipscanner'); if (scannerPage) scannerPage.style.display = 'none';
-        const navScanner = document.querySelector('.nav-link[data-page="ipscanner"]'); if (navScanner) navScanner.style.display = 'none';
-        const mobileNavScanner = document.querySelector('.mobile-nav .nav-item[data-page="ipscanner"]'); if (mobileNavScanner) mobileNavScanner.style.display = 'none';
-    } else {
-        stealthMode = false;
-        const scannerPage = $m('page-ipscanner'); if (scannerPage) scannerPage.style.display = '';
-        const navScanner = document.querySelector('.nav-link[data-page="ipscanner"]'); if (navScanner) navScanner.style.display = '';
-        const mobileNavScanner = document.querySelector('.mobile-nav .nav-item[data-page="ipscanner"]'); if (mobileNavScanner) mobileNavScanner.style.display = '';
-    }
-
-    if(timezoneOffset===3.5) setPanelTZ(3.5,'Tehran');
-    else if(timezoneOffset===0) setPanelTZ(0,'UTC');
-    else { toggleCustomTZInput(true); $m('custom-tz-value').value=timezoneOffset; }
-    
-    const savedTheme = d.theme_color || 'dark'; setPanelTheme(savedTheme);
-
-    authenticatedFetch('/api/warp/status?_=' + Date.now())
-      .then(async r => {
-          if (!r.ok) throw new Error(`HTTP ${r.status}`);
-          return r.json();
-      })
-      .then(data => {
-        const card = document.getElementById('card-warp');
-        const input = document.getElementById('set-warp-enabled');
-        if (data && data.enabled) {
-          card.classList.add('active');
-          card.classList.remove('inactive');
-          input.value = '1';
+        
+        $m('set-landing-redirect').value = d.landing_redirect || '';
+        $m('set-camouflage-url').value = d.camouflage_url || '';
+        $m('set-sub-filename').value = d.sub_filename || '';
+        $m('set-panel-prefix').value = d.panel_prefix || '';
+        
+        const newPrefix = d.panel_prefix || '';
+        if (window.panelPrefix !== newPrefix) {
+            window.panelPrefix = newPrefix;
+            const newPath = newPrefix ? '/' + newPrefix + '/panel' : '/panel';
+            if (window.location.pathname !== newPath) {
+                window.history.replaceState({}, '', newPath);
+            }
+        }
+        
+        updateDohEndpoint();
+        loadBlockedDomains();
+        
+        if (d.stealth_mode === '1') {
+            const stealthCard = $m('card-stealth');
+            if (stealthCard) { 
+                stealthCard.classList.add('active'); 
+                stealthCard.classList.remove('inactive'); 
+            }
+            $m('set-stealth-mode').value = '1';
+            stealthMode = true;
+            
+            const scannerPage = $m('page-ipscanner'); 
+            if (scannerPage) scannerPage.style.display = 'none';
+            const navScanner = document.querySelector('.nav-link[data-page="ipscanner"]'); 
+            if (navScanner) navScanner.style.display = 'none';
+            const mobileNavScanner = document.querySelector('.mobile-nav .nav-item[data-page="ipscanner"]'); 
+            if (mobileNavScanner) mobileNavScanner.style.display = 'none';
         } else {
-          card.classList.remove('active');
-          card.classList.add('inactive');
-          input.value = '0';
+            stealthMode = false;
+            const scannerPage = $m('page-ipscanner'); 
+            if (scannerPage) scannerPage.style.display = '';
+            const navScanner = document.querySelector('.nav-link[data-page="ipscanner"]'); 
+            if (navScanner) navScanner.style.display = '';
+            const mobileNavScanner = document.querySelector('.mobile-nav .nav-item[data-page="ipscanner"]'); 
+            if (mobileNavScanner) mobileNavScanner.style.display = '';
         }
-      })
-      .catch(err => {
-          console.error('Failed to fetch WARP status:', err);
-          const card = document.getElementById('card-warp');
-          const input = document.getElementById('set-warp-enabled');
-          if (card) { card.classList.remove('active'); card.classList.add('inactive'); }
-          if (input) input.value = '0';
-      });
 
-  } catch(e) { console.error('General Settings Load Error:', e); }
+        if (timezoneOffset === 3.5) {
+            setPanelTZ(3.5, 'Tehran');
+        } else if (timezoneOffset === 0) {
+            setPanelTZ(0, 'UTC');
+        } else { 
+            toggleCustomTZInput(true); 
+            $m('custom-tz-value').value = timezoneOffset; 
+        }
+        
+        const savedTheme = d.theme_color || 'dark'; 
+        setPanelTheme(savedTheme);
+
+        authenticatedFetch('/api/warp/status?_=' + Date.now())
+            .then(async r => {
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                return r.json();
+            })
+            .then(data => {
+                const card = document.getElementById('card-warp');
+                const input = document.getElementById('set-warp-enabled');
+                if (data && data.enabled) {
+                    card.classList.add('active');
+                    card.classList.remove('inactive');
+                    input.value = '1';
+                } else {
+                    card.classList.remove('active');
+                    card.classList.add('inactive');
+                    input.value = '0';
+                }
+                updateWarpIndicator(data);
+            })
+            .catch(err => {
+                console.error('Failed to fetch WARP status:', err);
+                const card = document.getElementById('card-warp');
+                const input = document.getElementById('set-warp-enabled');
+                if (card) { 
+                    card.classList.remove('active'); 
+                    card.classList.add('inactive'); 
+                }
+                if (input) input.value = '0';
+                updateWarpIndicator(null);
+            });
+
+    } catch (e) { 
+        console.error('General Settings Load Error:', e); 
+    }
 }
 
-async function saveGeneralSettings(){
-  const footer = $m('set-footer').value.trim();
-  const defPath = $m('set-default-path').value.trim();
-  let tz = timezoneOffset;
-  const logEnabled = $m('set-log-toggle').value;
-  const themeColor = $m('set-theme-color')?.value || theme;
-  const defLang = $m('set-default-lang')?.value || lang;
-  const defLimit = parseFloat($m('set-default-limit').value) * 1073741824;
-  const defExpiry = $m('set-default-expiry').value.trim();
-  const defMaxConn = $m('set-default-maxconn').value.trim();
-  const scannerTimeout = $m('set-scanner-timeout').value.trim();
-  const monthlyLimit = $m('set-monthly-limit').value.trim();
-  const maxScanIps = $m('set-max-scan-ips').value.trim();
-  const keepAliveInterval = $m('set-keep-alive-interval').value.trim();
-  const keepAliveEnabled = $m('set-keepalive-enabled').value;
-  let keepAliveModeEl = $m('set-keepalive-mode'); 
-  let keepAliveMode = keepAliveModeEl ? keepAliveModeEl.value : 'simple';
-  const autoDisable = $m('set-auto-disable').value;
-  const tgReport = $m('set-tg-report').value;
-  const tgNotify = $m('set-tg-notify').value;
-  
-  const stealthModeVal = $m('set-stealth-mode').value;
-  const landingRedirect = $m('set-landing-redirect').value.trim();
-  const camouflageUrl = $m('set-camouflage-url').value.trim();
-  const subFilename = $m('set-sub-filename').value.trim();
-  const panelPrefixVal = $m('set-panel-prefix').value.trim();
+async function saveGeneralSettings() {
+    const footer = $m('set-footer').value.trim();
+    const defPath = $m('set-default-path').value.trim();
+    let tz = timezoneOffset;
+    const logEnabled = $m('set-log-toggle').value;
+    const themeColor = $m('set-theme-color')?.value || theme;
+    const defLang = $m('set-default-lang')?.value || lang;
+    const defLimit = parseFloat($m('set-default-limit').value) * 1073741824;
+    const defExpiry = $m('set-default-expiry').value.trim();
+    const defMaxConn = $m('set-default-maxconn').value.trim();
+    const scannerTimeout = $m('set-scanner-timeout').value.trim();
+    const monthlyLimit = $m('set-monthly-limit').value.trim();
+    const maxScanIps = $m('set-max-scan-ips').value.trim();
+    const keepAliveInterval = $m('set-keep-alive-interval').value.trim();
+    const keepAliveEnabled = $m('set-keepalive-enabled').value;
+    
+    let keepAliveModeEl = $m('set-keepalive-mode'); 
+    let keepAliveMode = keepAliveModeEl ? keepAliveModeEl.value : 'simple';
+    
+    const autoDisable = $m('set-auto-disable').value;
+    const tgReport = $m('set-tg-report').value;
+    const tgNotify = $m('set-tg-notify').value;
+    const stealthModeVal = $m('set-stealth-mode').value;
+    const landingRedirect = $m('set-landing-redirect').value.trim();
+    const camouflageUrl = $m('set-camouflage-url').value.trim();
+    const subFilename = $m('set-sub-filename').value.trim();
+    const panelPrefixVal = $m('set-panel-prefix').value.trim();
 
-  await saveDohUpstreams();
+    await saveDohUpstreams();
 
-  const warpEnabled = document.getElementById('set-warp-enabled').value === '1';
-  
-  try {
-    const warpRes = await authenticatedFetch('/api/warp/toggle', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({enabled: warpEnabled})
-    });
-    const warpData = await warpRes.json().catch(() => null);
-    if (!warpRes.ok) {
-        console.error('WARP Toggle Error:', warpRes.status, warpData);
-        toast('Failed to apply WARP settings', true);
+    const warpEnabled = document.getElementById('set-warp-enabled').value === '1';
+    
+    try {
+        const warpRes = await authenticatedFetch('/api/warp/toggle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: warpEnabled })
+        });
+        const warpData = await warpRes.json().catch(() => null);
+        if (!warpRes.ok) {
+            console.error('WARP Toggle Error:', warpRes.status, warpData);
+            toast('Failed to apply WARP settings', true);
+        } else {
+            console.log('WARP Toggle Success:', warpData);
+        }
+    } catch (warpErr) {
+        console.error('WARP Toggle Request Failed:', warpErr);
+        toast('Network error toggling WARP', true);
+    }
+
+    try {
+        const settingsRes = await authenticatedFetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                footer_text: footer, default_path: defPath, timezone_offset: tz, log_enabled: logEnabled,
+                theme_color: themeColor, default_lang: defLang, default_limit_bytes: isNaN(defLimit) ? '' : String(Math.round(defLimit)),
+                default_expiry_days: defExpiry, default_max_connections: defMaxConn, scanner_timeout: scannerTimeout,
+                monthly_limit_gb: monthlyLimit, max_scan_ips: maxScanIps, keep_alive_interval: keepAliveInterval,
+                keep_alive_enabled: keepAliveEnabled, keep_alive_mode: keepAliveMode, auto_disable_enabled: autoDisable,
+                telegram_report_enabled: tgReport, telegram_notify_enabled: tgNotify,
+                stealth_mode: stealthModeVal, landing_redirect: landingRedirect, camouflage_url: camouflageUrl, sub_filename: subFilename,
+                panel_prefix: panelPrefixVal
+            })
+        });
+        
+        if (!settingsRes.ok) {
+            throw new Error(`Settings save failed: ${settingsRes.status}`);
+        }
+
+        timezoneOffset = parseFloat(tz) || 0;
+        toast('Saved & Applied');
+        
+        authenticatedFetch('/api/warp/status?_=' + Date.now())
+            .then(r => r.json())
+            .then(data => updateWarpIndicator(data))
+            .catch(() => {});
+        
+        if (panelPrefixVal !== (window.panelPrefix || '')) {
+            setTimeout(() => {
+                const newPrefix = panelPrefixVal ? '/' + panelPrefixVal : '';
+                window.location.href = newPrefix + '/login';
+            }, 600);
+        }
+    } catch (e) { 
+        console.error('General Settings Save Error:', e);
+        toast('Error saving settings', true); 
+    }
+}
+
+function updateWarpIndicator(data) {
+    const indicator = document.getElementById('warp-indicator');
+    if (!indicator) return;
+    
+    if (data && data.connected) {
+        indicator.textContent = (lang === 'fa' ? '🟢 وارپ فعال' : '🟢 WARP Active');
+        indicator.style.background = 'rgba(74,222,128,0.15)';
+        indicator.style.color = '#4ade80';
+        indicator.style.border = '1px solid rgba(74,222,128,0.4)';
+    } else if (data && data.enabled) {
+        indicator.textContent = (lang === 'fa' ? '🟡 وارپ روشن (بدون اتصال)' : '🟡 WARP Enabled (not connected)');
+        indicator.style.background = 'rgba(251,191,36,0.15)';
+        indicator.style.color = '#fbbf24';
+        indicator.style.border = '1px solid rgba(251,191,36,0.4)';
     } else {
-        console.log('WARP Toggle Success:', warpData);
+        indicator.textContent = (lang === 'fa' ? '⚫ وارپ خاموش' : '⚫ WARP Off');
+        indicator.style.background = 'rgba(113,113,122,0.15)';
+        indicator.style.color = '#71717a';
+        indicator.style.border = '1px solid rgba(113,113,122,0.4)';
     }
-  } catch (warpErr) {
-    console.error('WARP Toggle Request Failed:', warpErr);
-    toast('Network error toggling WARP', true);
-  }
-
-  try {
-    const settingsRes = await authenticatedFetch('/api/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        footer_text: footer, default_path: defPath, timezone_offset: tz, log_enabled: logEnabled,
-        theme_color: themeColor, default_lang: defLang, default_limit_bytes: isNaN(defLimit) ? '' : String(Math.round(defLimit)),
-        default_expiry_days: defExpiry, default_max_connections: defMaxConn, scanner_timeout: scannerTimeout,
-        monthly_limit_gb: monthlyLimit, max_scan_ips: maxScanIps, keep_alive_interval: keepAliveInterval,
-        keep_alive_enabled: keepAliveEnabled, keep_alive_mode: keepAliveMode, auto_disable_enabled: autoDisable,
-        telegram_report_enabled: tgReport, telegram_notify_enabled: tgNotify,
-        stealth_mode: stealthModeVal, landing_redirect: landingRedirect, camouflage_url: camouflageUrl, sub_filename: subFilename,
-        panel_prefix: panelPrefixVal
-      })
-    });
-    
-    if (!settingsRes.ok) {
-        throw new Error(`Settings save failed: ${settingsRes.status}`);
-    }
-
-    timezoneOffset = parseFloat(tz) || 0;
-    toast('Saved & Applied');
-    
-    if (panelPrefixVal !== (window.panelPrefix || '')) {
-        setTimeout(() => {
-            const newPrefix = panelPrefixVal ? '/' + panelPrefixVal : '';
-            window.location.href = newPrefix + '/login';
-        }, 600);
-    }
-  } catch (e) { 
-      console.error('General Settings Save Error:', e);
-      toast('Error saving settings', true); 
-  }
 }
 
 async function restartApp() {
-  if (!confirm('Are you sure you want to restart the application? This will cause a brief downtime.')) return;
-  toast('Restarting...');
-  try {
-    authenticatedFetch('/api/restart', { method: 'POST' });
-    setTimeout(() => location.reload(), 3000);
-  } catch (e) {
-    toast('Restart failed', true);
-  }
+    if (!confirm('Are you sure you want to restart the application? This will cause a brief downtime.')) return;
+    toast('Restarting...');
+    try {
+        authenticatedFetch('/api/restart', { method: 'POST' });
+        setTimeout(() => location.reload(), 3000);
+    } catch (e) {
+        toast('Restart failed', true);
+    }
 }
-function generateUUID(id){const uuid=crypto.randomUUID?crypto.randomUUID():'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return(c=='x'?r:(r&0x3|0x8)).toString(16);});$m(id).value=uuid;}
-function toggleAdv(id){const el=$m(id);el.style.display=el.style.display==='none'?'block':'none';}
-function filterLogs(){const q=($m('log-search').value||'').toLowerCase();document.querySelectorAll('#logs-tbody tr').forEach(row=>{if(!q){row.style.display='';return;}row.style.display=row.innerText.toLowerCase().includes(q)?'':'none';});}
-function clearLogSearch(){$m('log-search').value='';filterLogs();}
-async function clearLogs(){if(!confirm('Clear all logs?'))return;await authenticatedFetch('/api/logs/clear',{method:'DELETE'});loadLogs();}
-async function fetchLogSize(){const r=await authenticatedFetch('/api/logs/size');const d=await r.json();toast(`Log entries: ${d.count}, Size: ${d.size_kb} KB`);}
+
+function generateUUID(id) {
+    const uuid = crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0;
+        return (c == 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+    $m(id).value = uuid;
+}
+
+function toggleAdv(id) {
+    const el = $m(id);
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function filterLogs() {
+    const q = ($m('log-search').value || '').toLowerCase();
+    document.querySelectorAll('#logs-tbody tr').forEach(row => {
+        if (!q) {
+            row.style.display = '';
+            return;
+        }
+        row.style.display = row.innerText.toLowerCase().includes(q) ? '' : 'none';
+    });
+}
+
+function clearLogSearch() {
+    $m('log-search').value = '';
+    filterLogs();
+}
+
+async function clearLogs() {
+    if (!confirm('Clear all logs?')) return;
+    await authenticatedFetch('/api/logs/clear', { method: 'DELETE' });
+    loadLogs();
+}
+
+async function fetchLogSize() {
+    try {
+        const r = await authenticatedFetch('/api/logs/size');
+        const d = await r.json();
+        toast(`Log entries: ${d.count}, Size: ${d.size_kb} KB`);
+    } catch (e) {
+        console.error('Fetch log size error:', e);
+    }
+}
+
 async function resetAllSettings() {
-    const msg = lang === 'fa' ? 'آیا مطمئن هستید؟ تمام تنظیمات (به جز رمز عبور) بازنشانی می‌شوند.' : 'Are you sure? All settings (except password) will return to defaults.';
+    const msg = lang === 'fa' 
+        ? 'آیا مطمئن هستید؟ تمام تنظیمات (به جز رمز عبور) بازنشانی می‌شوند.' 
+        : 'Are you sure? All settings (except password) will return to defaults.';
+        
     if (!confirm(msg)) return;
+    
     try {
         const r = await authenticatedFetch('/api/settings/reset', { method: 'POST' });
         if (!r.ok) throw new Error((await r.json()).detail);
@@ -9871,31 +9978,61 @@ async function resetAllSettings() {
         toast(e.message, true);
     }
 }
+
 let sseConnection = null;
+
 function startSSE() {
     const token = localStorage.getItem('token');
     if (!token) return;
-    if (sseConnection) { sseConnection.close(); }
+    if (sseConnection) { 
+        sseConnection.close(); 
+    }
     const url = `/api/sse/stats-live?token=${encodeURIComponent(token)}`;
     sseConnection = new EventSource(url);
+    
     sseConnection.onmessage = function(event) {
         const data = JSON.parse(event.data);
         safeSetText('sv-requests', data.total_requests);
         safeSetHTML('sv-traffic', data.total_traffic_mb + '<span class="stat-unit"> MB</span>');
         safeSetText('sv-uptime', data.uptime);
     };
+    
     sseConnection.onerror = function() {
         sseConnection.close();
         setTimeout(startSSE, 5000);
     };
 }
+
 function stopSSE() {
-    if (sseConnection) { sseConnection.close(); sseConnection = null; }
+    if (sseConnection) { 
+        sseConnection.close(); 
+        sseConnection = null; 
+    }
 }
-document.addEventListener('keydown',e=>{if(e.ctrlKey||e.metaKey){const pages=['dashboard','inbounds','addresses','ipscanner','logs','telegram','settings'];const num=parseInt(e.key);if(num>=1&&num<=pages.length)switchPage(pages[num-1]);}});
-if(window.matchMedia('(prefers-color-scheme: dark)').matches && !localStorage.getItem('theme'))setTheme('dark');
-setTheme(theme);setLang(lang);checkAuth();
-setInterval(()=>{if(isAuthenticated && !isInitialChecking){loadStats();}},15000);
+
+document.addEventListener('keydown', e => {
+    if (e.ctrlKey || e.metaKey) {
+        const pages = ['dashboard', 'inbounds', 'addresses', 'ipscanner', 'logs', 'telegram', 'settings'];
+        const num = parseInt(e.key);
+        if (num >= 1 && num <= pages.length) {
+            switchPage(pages[num - 1]);
+        }
+    }
+});
+
+if (window.matchMedia('(prefers-color-scheme: dark)').matches && !localStorage.getItem('theme')) {
+    setTheme('dark');
+}
+
+setTheme(theme);
+setLang(lang);
+checkAuth();
+
+setInterval(() => {
+    if (isAuthenticated && !isInitialChecking) {
+        loadStats();
+    }
+}, 15000);
 
 async function loadBlockedDomains() {
     try {
@@ -9903,18 +10040,23 @@ async function loadBlockedDomains() {
         if (!r.ok) return;
         const d = await r.json();
         $m('set-blocked-domains').value = (d.domains || []).join('\n');
-    } catch(e) {}
+    } catch (e) {
+        console.error('Load blocked domains error:', e);
+    }
 }
+
 async function saveBlockedDomains() {
     const lines = $m('set-blocked-domains').value.split('\n').map(l => l.trim()).filter(l => l);
     try {
         await authenticatedFetch('/api/blocked-domains', {
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({domains: lines})
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ domains: lines })
         });
         toast('Saved');
-    } catch { toast('Error', true); }
+    } catch (e) { 
+        toast('Error', true); 
+    }
 }
 </script>
 </body>
@@ -9943,7 +10085,28 @@ async def _write_warp_state(state: dict):
 @app.get("/api/warp/status")
 async def get_warp_status(_: str = Depends(require_auth)):
     state = await _read_warp_state()
-    return {"enabled": state.get("enabled", False)}
+    enabled = state.get("enabled", False)
+    connected = False
+    if enabled:
+        try:
+            import socket
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(0.5)
+            s.connect(("127.0.0.1", 40000))
+            s.close()
+            connected = True
+        except Exception:
+            try:
+                import subprocess
+                result = subprocess.run(
+                    ["ip", "link", "show", "CloudflareWARP"],
+                    capture_output=True, text=True, timeout=2
+                )
+                if "CloudflareWARP" in result.stdout:
+                    connected = True
+            except Exception:
+                pass
+    return {"enabled": enabled, "connected": connected}
 
 @app.post("/api/warp/toggle")
 async def toggle_warp(request: Request, _: str = Depends(require_auth)):
