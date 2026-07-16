@@ -21,6 +21,8 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 import httpx
+http_client = None
+
 import psutil
 import bcrypt
 from jose import jwt, JWTError
@@ -34,7 +36,8 @@ import yaml
 import html
 import aiofiles
 import anyio
-from starlette.background import BackgroundTask
+from starlette.background import BackgroundTask, BackgroundTasks
+
 try:
     import uvloop
     uvloop.install()
@@ -1055,7 +1058,7 @@ async def send_main_menu(chat_id: int, lang: str):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global TIMEZONE_OFFSET, KEEP_ALIVE_ENABLED, KEEP_ALIVE_INTERVAL, KEEP_ALIVE_MODE, DOH_UPSTREAMS, DEFAULT_PATH, DOH_ENABLED
-    global STEALTH_MODE, LANDING_REDIRECT, CAMOUFLAGE_URL, SUB_FILENAME, default_tg_lang
+    global STEALTH_MODE, LANDING_REDIRECT, CAMOUFLAGE_URL, SUB_FILENAME, default_tg_lang, http_client
     if DB_BACKEND == "postgresql":
         await init_pg()
     else:
@@ -1180,7 +1183,17 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(auto_disable_expired_links())
     asyncio.create_task(cleanup_link_cache())
     asyncio.create_task(cleanup_telegram_create_steps())
+
+    http_client = httpx.AsyncClient(
+        timeout=10.0,
+        limits=httpx.Limits(max_keepalive_connections=20, max_connections=100)
+    )
+
     yield
+
+    if http_client:
+        await http_client.aclose()
+
     if DB_BACKEND == "sqlite" and db_conn:
         await db_conn.close()
 
@@ -4839,6 +4852,14 @@ async def _teardown_xhttp(session_id: str):
     if not sess:
         return
     sess["closed"] = True
+
+    gate = sess.get("quota_gate")
+    if gate:
+        try:
+            await gate.flush()
+        except Exception:
+            pass
+
     for t in ("uplink_task", "downlink_task"):
         task = sess.get(t)
         if task and not task.done():
@@ -4847,6 +4868,7 @@ async def _teardown_xhttp(session_id: str):
                 await task
             except (asyncio.CancelledError, Exception):
                 pass
+
     writer = sess.get("writer")
     if writer:
         try:
@@ -4854,6 +4876,7 @@ async def _teardown_xhttp(session_id: str):
             await writer.wait_closed()
         except Exception:
             pass
+
     down_q = sess.get("down_q")
     if down_q:
         while True:
@@ -4865,6 +4888,7 @@ async def _teardown_xhttp(session_id: str):
                     down_q.get_nowait()
                 except asyncio.QueueEmpty:
                     pass
+
     connections.pop(sess.get("conn_id"), None)
     logger.info(f"XHTTP session [{session_id[:8]}] closed")
 
@@ -5611,10 +5635,16 @@ async def xhttp_stream_up(session_id: str, request: Request):
                 await _teardown_xhttp(session_id)
                 raise HTTPException(status_code=502, detail=str(e))
         else:
-            if not await check_quota(sess["uuid"], len(chunk)):
-                await _teardown_xhttp(session_id)
-                raise HTTPException(status_code=403, detail="quota")
-            await add_usage(sess["uuid"], len(chunk))
+            gate = sess.get("quota_gate")
+            if gate:
+                if not await gate.add(len(chunk)):
+                    await _teardown_xhttp(session_id)
+                    raise HTTPException(status_code=403, detail="quota exceeded")
+            else:
+                if not await check_quota(sess["uuid"], len(chunk)):
+                    await _teardown_xhttp(session_id)
+                    raise HTTPException(status_code=403, detail="quota")
+                await add_usage(sess["uuid"], len(chunk))
             stats["total_bytes"] += len(chunk)
             stats["upload_bytes"] += len(chunk)
             sess["writer"].write(chunk)
@@ -9833,15 +9863,29 @@ async function saveGeneralSettings() {
             body: JSON.stringify({ enabled: warpEnabled })
         });
         const warpData = await warpRes.json().catch(() => null);
-        if (!warpRes.ok) {
-            console.error('WARP Toggle Error:', warpRes.status, warpData);
-            toast('Failed to apply WARP settings', true);
-        } else {
-            console.log('WARP Toggle Success:', warpData);
+
+        if (!warpRes.ok || !warpData || warpData.saved_to_disk === false) {
+            let errMsg = (lang === 'fa')
+                ? 'خطا در اعمال تنظیمات WARP.'
+                : 'Failed to apply WARP settings.';
+            if (warpData && warpData.saved_to_disk === false) {
+                errMsg = (lang === 'fa')
+                    ? 'خطا: سیستم‌فایل فقط‌خواندنی است. تنظیمات وارپ ذخیره نشد (محدودیت PaaS).'
+                    : 'Error: Read-only filesystem. WARP settings could not be saved (PaaS limitation).';
+            }
+            console.error('WARP Toggle Failed:', warpRes.status, warpData);
+            toast(errMsg, true);
+            return;
+        }
+
+        console.log('WARP Toggle Success:', warpData);
+        if (typeof updateWarpIndicator === 'function') {
+            updateWarpIndicator({ enabled: warpData.enabled, connected: false });
         }
     } catch (warpErr) {
         console.error('WARP Toggle Request Failed:', warpErr);
         toast('Network error toggling WARP', true);
+        return;
     }
 
     try {
@@ -10065,8 +10109,6 @@ async function saveBlockedDomains() {
 </body>
 </html>"""
 
-# ... (PANEL_HTML/WARP) ...
-
 # ------------------ WARP Management ------------------
 WARP_STATE_FILE = "/data/warp_state.json"
 
@@ -10090,41 +10132,28 @@ async def get_warp_status(_: str = Depends(require_auth)):
     state = await _read_warp_state()
     enabled = state.get("enabled", False)
     connected = False
-    error_msg = None
 
     if enabled:
         try:
-            import socket
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(0.5)
-            s.connect(("127.0.0.1", 40000))
-            s.close()
-            connected = True
-        except Exception as e:
-            error_msg = f"SOCKS5 port 40000 connection failed: {str(e)}"
-
-        if not connected:
+            process = await asyncio.create_subprocess_exec(
+                "warp-cli", "--accept-tos", "status",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
             try:
-                import urllib.request
-                req = urllib.request.Request(
-                    "https://1.1.1.1/cdn-cgi/trace",
-                    headers={"User-Agent": "Mozilla/5.0"}
-                )
-                with urllib.request.urlopen(req, timeout=2.0) as response:
-                    content = response.read().decode("utf-8")
-                    if "warp=on" in content or "warp=plus" in content:
-                        connected = True
-                        error_msg = None
-            except Exception as e:
-                if error_msg:
-                    error_msg += f" | TUN verification failed: {str(e)}"
-                else:
-                    error_msg = f"TUN verification failed: {str(e)}"
+                stdout, _ = await asyncio.wait_for(process.communicate(), timeout=3.0)
+                output = stdout.decode().strip()
+                if "Status update: Connected" in output:
+                    connected = True
+            except asyncio.TimeoutError:
+                logger.error("WARP status check timed out after 3 seconds.")
+        except Exception as e:
+            logger.error(f"WARP status check failed: {e}")
 
     return {
         "enabled": enabled,
         "connected": connected,
-        "debug_info": error_msg if (enabled and not connected) else "OK"
+        "debug_info": "OK" if not enabled else ("Connected" if connected else "Not connected")
     }
 
 @app.post("/api/warp/toggle")
@@ -10134,19 +10163,32 @@ async def toggle_warp(request: Request, _: str = Depends(require_auth)):
     state = await _read_warp_state()
     state["enabled"] = enabled
     state["last_toggled"] = datetime.now(timezone.utc).isoformat()
-    await _write_warp_state(state)
-    log_event("WARP", f"WARP tunnel {'enabled' if enabled else 'disabled'} by admin")
-    return {"ok": True, "enabled": enabled, "restart_required": True}
+
+    saved_to_disk = True
+    try:
+        await _write_warp_state(state)
+    except (PermissionError, OSError) as e:
+        logger.warning(f"Cannot write WARP state to disk (read-only filesystem): {e}")
+        saved_to_disk = False
+
+    log_event("WARP", f"WARP tunnel {'enabled' if enabled else 'disabled'} by admin (persisted={saved_to_disk})")
+    return {
+        "ok": True,
+        "enabled": enabled,
+        "saved_to_disk": saved_to_disk,
+        "restart_required": True,
+    }
 
 @app.post("/api/restart")
 async def restart_app(_: str = Depends(require_auth)):
     async def _restart():
         await asyncio.sleep(1)
         os._exit(0)
+
     background_tasks = BackgroundTasks()
     background_tasks.add_task(_restart)
     return JSONResponse(
-        {"ok": True, "message": "Application is restarting..."},
+        content={"ok": True, "message": "Application is restarting..."},
         background=background_tasks
     )
 
