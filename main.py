@@ -2991,7 +2991,7 @@ async def toggle_link(uid: str, request: Request, _=Depends(require_auth)):
     # --- collect all supported fields ---
     field_map = {
         "active": ("active", int),
-        "limit_value": None,  # handled separately
+        "limit_value": None,
         "reset_usage": None,
         "label": ("label", str),
         "max_connections": ("max_connections", int),
@@ -2999,7 +2999,7 @@ async def toggle_link(uid: str, request: Request, _=Depends(require_auth)):
         "custom_path": ("custom_path", str),
         "custom_sni": ("custom_sni", str),
         "custom_host": ("custom_host", str),
-        "custom_fp": ("fingerprint", str),   # legacy
+        "custom_fp": ("fingerprint", str),
         "color": ("color", str),
         "flag": ("flag", str),
         "fragment": ("fragment", str),
@@ -3550,30 +3550,89 @@ async def doh_handler(request: Request):
             return Response(content=result, media_type="application/dns-message")
     return Response("All upstreams failed", status_code=502)
 
-# ------------------ HTTP Proxy ------------------
+# ------------------ HTTP Proxy (Secure + Streaming) ------------------
 _HOP_BY_HOP = {"connection","keep-alive","proxy-authenticate","proxy-authorization",
                "te","trailers","transfer-encoding","upgrade","content-encoding","content-length"}
 
+http_proxy_client = httpx.AsyncClient(timeout=30.0, follow_redirects=True)
+
+PROXY_WHITELIST = set(
+    d.strip() for d in os.environ.get("PROXY_WHITELIST", "").split(",") if d.strip()
+) if os.environ.get("PROXY_WHITELIST") else None
+
+async def _is_safe_target(url: str) -> bool:
+    """Block private / loopback / link‑local IPs and enforce optional whitelist."""
+    parsed = urlparse(url)
+    hostname = parsed.hostname
+    if not hostname:
+        return False
+    try:
+        ip = socket.gethostbyname(hostname)
+        ip_obj = ipaddress.ip_address(ip)
+        if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local:
+            return False
+    except socket.gaierror:
+        return False
+    if PROXY_WHITELIST is not None:
+        return any(hostname.endswith(d) for d in PROXY_WHITELIST)
+    return True
+
 @app.api_route("/proxy/{target_url:path}", methods=["GET","POST","PUT","DELETE","PATCH","HEAD","OPTIONS"])
 @limiter.limit("30/minute")
-async def http_proxy(target_url: str, request: Request):
-    if not target_url.startswith("http"):
+async def http_proxy(target_url: str, request: Request, _=Depends(require_auth)):
+    if not target_url.startswith(("http://", "https://")):
         target_url = "https://" + target_url
+
+    if not await _is_safe_target(target_url):
+        raise HTTPException(status_code=403, detail="Target URL is not allowed")
+
+    headers = {
+        k: v for k, v in request.headers.items()
+        if k.lower() not in _HOP_BY_HOP and k.lower() != "host"
+    }
+
     try:
-        body = await request.body()
-        headers = {k: v for k, v in request.headers.items()
-                   if k.lower() not in _HOP_BY_HOP and k.lower() != "host"}
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-            resp = await client.request(method=request.method, url=target_url,
-                                        headers=headers, content=body)
+        req = http_proxy_client.build_request(
+            method=request.method,
+            url=target_url,
+            headers=headers,
+            content=request.stream(),
+        )
+        resp = await http_proxy_client.send(req, stream=True)
         stats["total_requests"] += 1
-        return Response(content=resp.content, status_code=resp.status_code,
-                        headers={k: v for k, v in resp.headers.items()
-                                 if k.lower() not in _HOP_BY_HOP})
+
+        async def response_streamer():
+            async for chunk in resp.aiter_bytes():
+                stats["total_bytes"] += len(chunk)
+                stats["download_bytes"] += len(chunk)
+                yield chunk
+
+        response_headers = {
+            k: v for k, v in resp.headers.items()
+            if k.lower() not in _HOP_BY_HOP
+        }
+        return StreamingResponse(
+            response_streamer(),
+            status_code=resp.status_code,
+            headers=response_headers,
+        )
+    except httpx.RequestError as e:
+        stats["total_errors"] += 1
+        error_logs.append({
+            "time": datetime.now(timezone.utc).isoformat(),
+            "error": f"Proxy error: {e}",
+            "url": target_url,
+            "type": "Proxy",
+        })
+        raise HTTPException(status_code=502, detail=f"Proxy error: {e}")
     except Exception as e:
         stats["total_errors"] += 1
-        error_logs.append({"time": datetime.now(timezone.utc).isoformat(),
-                           "error": f"Proxy error: {e}", "type": "Proxy"})
+        error_logs.append({
+            "time": datetime.now(timezone.utc).isoformat(),
+            "error": f"Proxy error: {e}",
+            "url": target_url,
+            "type": "Proxy",
+        })
         raise HTTPException(status_code=502, detail=f"Proxy error: {e}")
 
 # ------------------ Blocked Domains API ------------------
@@ -3698,7 +3757,6 @@ async def user_dashboard(uid: str, request: Request):
     usage_percent = 0 if limit == 0 else min(100, round(used / limit * 100, 1))
     usage_bar_color = "#4ade80" if usage_percent < 80 else ("#fbbf24" if usage_percent < 95 else "#f87171")
 
-    # دریافت خودکار دامنه از درخواست جاری (رفع مشکل localhost)
     domain = get_domain(request)
 
     vless_link = generate_vless_link(uid, remark=link["label"], server_domain=domain)
@@ -4150,7 +4208,7 @@ async def clash_subscription(uid: str, request: Request):
                 elif flag_emoji_link:
                     name = f"{flag_emoji_link} {name}"
             else:
-                name = f"SulgX-{link['label']}-IP{i+1}"
+                name = f"SulgX-{link['label']}-Server{i+1}"
                 if addr_flag_emoji:
                     name = f"{addr_flag_emoji} {name}"
                 elif flag_emoji_link:
@@ -4321,7 +4379,6 @@ async def singbox_subscription(uid: str, request: Request):
     random_path = link.get("random_path", False)
     smux_enabled = link.get("smux_enabled", False)
 
-    # ── fingerprint و alpn را از link می‌خوانیم و در صورت none خالی می‌کنیم
     fingerprint = link.get("fingerprint", "chrome")
     alpn = link.get("alpn", "http/1.1")
     if not fingerprint or fingerprint.lower() == "none":
@@ -4342,13 +4399,12 @@ async def singbox_subscription(uid: str, request: Request):
             if entry.get("name"):
                 name = entry["name"]
             else:
-                name = f"SulgX-{link['label']}-IP{i+1}"
+                name = f"SulgX-{link['label']}-Server{i+1}"
 
         path = get_effective_path(link).replace("{uid}", uid)
         if random_path:
             path = "/" + secrets.token_hex(4) + path
 
-        # دیکشنری پایه proxy بدون utls
         proxy = {
             "type": "vless",
             "tag": name,
@@ -4368,7 +4424,6 @@ async def singbox_subscription(uid: str, request: Request):
             }
         }
 
-        # شرط fingerprint: اگر مقدار داشت utls فعال وگرنه غیرفعال
         if fingerprint:
             proxy["tls"]["utls"] = {
                 "enabled": True,
@@ -4612,7 +4667,7 @@ async def generate_subscription_content(link: dict, uid: str, addresses: list, e
                 elif flag_emoji:
                     remark = f"{flag_emoji} {remark}"
             else:
-                remark = f"SulgX-{link['label']}-IP{i+1}"
+                remark = f"SulgX-{link['label']}-Server {i+1}"
                 if addr_flag_emoji:
                     remark = f"{addr_flag_emoji} {remark}"
                 elif flag_emoji:
@@ -4802,7 +4857,6 @@ async def test_inbound(uid: str, request: Request, _=Depends(require_auth)):
     async def check_single(addr: str):
         try:
             host = addr.split(':')[0]
-            # تست TCP با timeout کوتاه
             start = time.time()
             reader, writer = await asyncio.wait_for(
                 asyncio.open_connection(host, 443), timeout=5
@@ -4845,7 +4899,6 @@ async def _teardown_xhttp(session_id: str):
     if not sess:
         return
     sess["closed"] = True
-    # Cancel both relay tasks if still running
     for t in ("uplink_task", "downlink_task"):
         task = sess.get(t)
         if task and not task.done():
@@ -4854,7 +4907,6 @@ async def _teardown_xhttp(session_id: str):
                 await task
             except (asyncio.CancelledError, Exception):
                 pass
-    # Close the TCP writer if present
     writer = sess.get("writer")
     if writer:
         try:
@@ -4862,7 +4914,6 @@ async def _teardown_xhttp(session_id: str):
             await writer.wait_closed()
         except Exception:
             pass
-    # Unblock the downlink generator (waiting on down_q.get())
     down_q = sess.get("down_q")
     if down_q:
         while True:
@@ -4874,7 +4925,6 @@ async def _teardown_xhttp(session_id: str):
                     down_q.get_nowait()
                 except asyncio.QueueEmpty:
                     pass
-    # Remove the connection record
     connections.pop(sess.get("conn_id"), None)
     logger.info(f"XHTTP session [{session_id[:8]}] closed")
 
@@ -5223,7 +5273,7 @@ async def websocket_tunnel(websocket: WebSocket, uuid: str):
             link_ip_map[uuid].add(client_ip)
         stats["total_requests"] += 1
 
-        if command == 2:  # UDP
+        if command == 2:
             loop = asyncio.get_event_loop()
             if ':' in address:
                 udp_sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
@@ -5234,7 +5284,7 @@ async def websocket_tunnel(websocket: WebSocket, uuid: str):
             down_task = asyncio.create_task(udp_from_socket(websocket, udp_sock, conn_id, uuid))
             done, pending = await asyncio.wait({up_task, down_task}, return_when=asyncio.FIRST_COMPLETED)
             for t in pending: t.cancel()
-        else:  # TCP
+        else:
             gate = QuotaGate(uuid)
             if initial_payload:
                 await gate.add(len(initial_payload))
@@ -5485,6 +5535,8 @@ async def xhttp_packet_up(session_id: str, seq: int, request: Request):
             stats["total_requests"] += 1
 
             if payload:
+                stats["total_bytes"] += len(payload)
+                stats["upload_bytes"] += len(payload)
                 writer.write(payload)
                 await writer.drain()
 
@@ -5501,11 +5553,15 @@ async def xhttp_packet_up(session_id: str, seq: int, request: Request):
         seq_lock = sess["seq_lock"]
         async with seq_lock:
             if seq == sess["next_seq"]:
+                stats["total_bytes"] += len(body)
+                stats["upload_bytes"] += len(body)
                 sess["writer"].write(body)
                 await sess["writer"].drain()
                 sess["next_seq"] += 1
                 while sess["next_seq"] in sess["seq_buf"]:
                     pending = sess["seq_buf"].pop(sess["next_seq"])
+                    stats["total_bytes"] += len(pending)
+                    stats["upload_bytes"] += len(pending)
                     sess["writer"].write(pending)
                     await sess["writer"].drain()
                     sess["next_seq"] += 1
@@ -5595,12 +5651,13 @@ async def xhttp_stream_up(session_id: str, request: Request):
                     _pump_tcp_to_queue(session_id, user_uuid, reader, sess["down_q"])
                 )
 
-                # Only count payload length, not the full VLESS header
                 actual_payload_len = len(payload)
                 if not await check_quota(user_uuid, actual_payload_len):
                     await _teardown_xhttp(session_id)
                     raise HTTPException(status_code=403, detail="quota")
                 await add_usage(user_uuid, actual_payload_len)
+                stats["total_bytes"] += actual_payload_len
+                stats["upload_bytes"] += actual_payload_len
 
                 stats["total_requests"] += 1
                 logger.info(f"XHTTP stream-up session [{session_id[:8]}] uid={user_uuid[:8]} -> {target_addr}:{target_port}")
@@ -5618,6 +5675,8 @@ async def xhttp_stream_up(session_id: str, request: Request):
                 await _teardown_xhttp(session_id)
                 raise HTTPException(status_code=403, detail="quota")
             await add_usage(sess["uuid"], len(chunk))
+            stats["total_bytes"] += len(chunk)
+            stats["upload_bytes"] += len(chunk)
             sess["writer"].write(chunk)
             await sess["writer"].drain()
 
@@ -5678,6 +5737,8 @@ async def xhttp_stream_one(base_path: str, request: Request):
         )
         tune_socket(writer)
         if payload:
+            stats["total_bytes"] += len(payload)
+            stats["upload_bytes"] += len(payload)
             writer.write(payload)
             await writer.drain()
     except Exception as e:
@@ -5748,6 +5809,8 @@ async def _pump_tcp_to_queue(session_id: str, uuid: str, reader: asyncio.StreamR
             if not await gate.add(len(data)):
                 break
             await gate.flush()
+            stats["total_bytes"] += len(data)
+            stats["download_bytes"] += len(data)
             async with XHTTP_LOCK:
                 sess = xhttp_sessions.get(session_id)
             if sess:
@@ -6945,7 +7008,7 @@ textarea.fi { resize: vertical; min-height: 130px; }
           <text x="90" y="58" font-family="'Orbitron',sans-serif" font-size="40" font-weight="900" fill="var(--primary)" text-anchor="middle">SulgX</text>
         </svg>
         <div style="font-family:'Orbitron',sans-serif;font-size:1.5rem;font-weight:900;color:var(--primary);margin-top:12px;display:flex;align-items:center;justify-content:center;gap:8px;">
-          SulgX Panel <span style="font-size:0.8rem; font-family:'Inter'; color:var(--bg); background:var(--primary); padding:2px 6px; border-radius:4px;">V 1.5.2</span>
+          SulgX Panel <span style="font-size:0.8rem; font-family:'Inter'; color:var(--bg); background:var(--primary); padding:2px 6px; border-radius:4px;">V 1.5.3</span>
         </div>
         <div style="font-size:1rem;color:var(--text3);margin-top:8px;" data-en="Enter your password" data-fa="رمز عبور را وارد کنید">Enter your password</div>
         <div id="login-custom-message" style="margin-top:20px; text-align:center; color:var(--text3); font-size:0.9rem;"></div>
@@ -6964,7 +7027,7 @@ textarea.fi { resize: vertical; min-height: 130px; }
   <header class="header">
     <div class="header-inner">
       <div style="display:flex;align-items:center;gap:16px;">
-        <span class="logo">SulgX</span><span class="version-tag">v1.5.2</span>
+        <span class="logo">SulgX</span><span class="version-tag">v1.5.3</span>
         <span id="panel-clock" style="font-weight:600;color:var(--primary);margin-left:8px;font-size:0.9rem;"></span>
         <nav class="header-nav" id="mainNav">
           <button class="nav-link active" data-page="dashboard">📊 <span data-en="Dashboard" data-fa="داشبورد">Dashboard</span></button>
@@ -7417,7 +7480,7 @@ example.com
         <div class="fg"><label class="fl">IP Profile</label><select class="fs" id="aip-profile"></select></div>
         <div class="fg"><label class="fl" data-en="Naming Mode" data-fa="شیوه نام‌گذاری">Naming Mode</label>
           <select class="fs" id="anaming-mode">
-            <option value="default">Default (SulgX-Name-IP1)</option>
+            <option value="default">Default (SulgX-Name-Server1)</option>
             <option value="short">Short (SXP 1, SXP 2, ...)</option>
           </select>
         </div>
@@ -7533,7 +7596,7 @@ example.com
         <div class="fg"><label class="fl">IP Profile</label><select class="fs" id="eip-profile"></select></div>
         <div class="fg"><label class="fl" data-en="Naming Mode" data-fa="شیوه نام‌گذاری">Naming Mode</label>
           <select class="fs" id="enaming-mode">
-            <option value="default">Default (SulgX-Name-IP1)</option>
+            <option value="default">Default (SulgX-Name-Server1)</option>
             <option value="short">Short (SXP 1, SXP 2, ...)</option>
           </select>
         </div>
