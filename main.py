@@ -9744,7 +9744,7 @@ async function loadGeneralSettings(){
     
     const savedTheme = d.theme_color || 'dark'; setPanelTheme(savedTheme);
 
-    fetch('/api/warp/status?_=' + Date.now(), { cache: 'no-store' })
+    authenticatedFetch('/api/warp/status?_=' + Date.now())
       .then(r => r.json())
       .then(data => {
         const card = document.getElementById('card-warp');
@@ -9794,7 +9794,7 @@ async function saveGeneralSettings(){
   await saveDohUpstreams();
 
   const warpEnabled = document.getElementById('set-warp-enabled').value === '1';
-  await fetch('/api/warp/toggle', {
+  await authenticatedFetch('/api/warp/toggle', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({enabled: warpEnabled})
@@ -9830,7 +9830,7 @@ async function restartApp() {
   if (!confirm('Are you sure you want to restart the application? This will cause a brief downtime.')) return;
   toast('Restarting...');
   try {
-    fetch('/api/restart', { method: 'POST' });
+    authenticatedFetch('/api/restart', { method: 'POST' });
     setTimeout(() => location.reload(), 3000);
   } catch (e) {
     toast('Restart failed', true);
