@@ -1208,64 +1208,6 @@ async def _is_safe_target(url: str) -> bool:
 
 app = FastAPI(title="SulgX Panel", lifespan=lifespan, docs_url=None, redoc_url=None)
 
-@app.api_route("/proxy/{target_url:path}", methods=["GET","POST","PUT","DELETE","PATCH","HEAD","OPTIONS"])
-@limiter.limit("30/minute")
-async def http_proxy(target_url: str, request: Request, _=Depends(require_auth)):
-    if not target_url.startswith(("http://", "https://")):
-        target_url = "https://" + target_url
-
-    if not await _is_safe_target(target_url):
-        raise HTTPException(status_code=403, detail="Target URL is not allowed")
-
-    headers = {
-        k: v for k, v in request.headers.items()
-        if k.lower() not in _HOP_BY_HOP and k.lower() != "host"
-    }
-
-    try:
-        req = http_client.build_request(
-            method=request.method,
-            url=target_url,
-            headers=headers,
-            content=request.stream(),
-        )
-        resp = await http_client.send(req, stream=True)
-        stats["total_requests"] += 1
-
-        async def response_streamer():
-            async for chunk in resp.aiter_bytes():
-                stats["total_bytes"] += len(chunk)
-                stats["download_bytes"] += len(chunk)
-                yield chunk
-
-        response_headers = {
-            k: v for k, v in resp.headers.items()
-            if k.lower() not in _HOP_BY_HOP
-        }
-        return StreamingResponse(
-            response_streamer(),
-            status_code=resp.status_code,
-            headers=response_headers,
-        )
-    except httpx.RequestError as e:
-        stats["total_errors"] += 1
-        error_logs.append({
-            "time": datetime.now(timezone.utc).isoformat(),
-            "error": f"Proxy error: {e}",
-            "url": target_url,
-            "type": "Proxy",
-        })
-        raise HTTPException(status_code=502, detail=f"Proxy error: {e}")
-    except Exception as e:
-        stats["total_errors"] += 1
-        error_logs.append({
-            "time": datetime.now(timezone.utc).isoformat(),
-            "error": f"Proxy error: {e}",
-            "url": target_url,
-            "type": "Proxy",
-        })
-        raise HTTPException(status_code=502, detail=f"Proxy error: {e}")
-
 from starlette.types import ASGIApp, Scope, Receive, Send
 
 class PanelPrefixMiddleware:
@@ -10101,6 +10043,64 @@ async def dynamic_xhttp_router(full_path: str, request: Request):
     else:
         raise HTTPException(status_code=404)
 
+
+@app.api_route("/proxy/{target_url:path}", methods=["GET","POST","PUT","DELETE","PATCH","HEAD","OPTIONS"])
+@limiter.limit("30/minute")
+async def http_proxy(target_url: str, request: Request, _=Depends(require_auth)):
+    if not target_url.startswith(("http://", "https://")):
+        target_url = "https://" + target_url
+
+    if not await _is_safe_target(target_url):
+        raise HTTPException(status_code=403, detail="Target URL is not allowed")
+
+    headers = {
+        k: v for k, v in request.headers.items()
+        if k.lower() not in _HOP_BY_HOP and k.lower() != "host"
+    }
+
+    try:
+        req = http_client.build_request(
+            method=request.method,
+            url=target_url,
+            headers=headers,
+            content=request.stream(),
+        )
+        resp = await http_client.send(req, stream=True)
+        stats["total_requests"] += 1
+
+        async def response_streamer():
+            async for chunk in resp.aiter_bytes():
+                stats["total_bytes"] += len(chunk)
+                stats["download_bytes"] += len(chunk)
+                yield chunk
+
+        response_headers = {
+            k: v for k, v in resp.headers.items()
+            if k.lower() not in _HOP_BY_HOP
+        }
+        return StreamingResponse(
+            response_streamer(),
+            status_code=resp.status_code,
+            headers=response_headers,
+        )
+    except httpx.RequestError as e:
+        stats["total_errors"] += 1
+        error_logs.append({
+            "time": datetime.now(timezone.utc).isoformat(),
+            "error": f"Proxy error: {e}",
+            "url": target_url,
+            "type": "Proxy",
+        })
+        raise HTTPException(status_code=502, detail=f"Proxy error: {e}")
+    except Exception as e:
+        stats["total_errors"] += 1
+        error_logs.append({
+            "time": datetime.now(timezone.utc).isoformat(),
+            "error": f"Proxy error: {e}",
+            "url": target_url,
+            "type": "Proxy",
+        })
+        raise HTTPException(status_code=502, detail=f"Proxy error: {e}")
 
 if __name__ == "__main__":
     listen_port = int(os.environ.get("PORT", 8000))
