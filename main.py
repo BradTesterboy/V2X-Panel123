@@ -153,6 +153,85 @@ DOH_UPSTREAMS: list = [
 ]
 DOH_ENABLED: bool = True
 
+# ------------------ HTTP Proxy (Secure + Streaming) ------------------
+_HOP_BY_HOP = {"connection","keep-alive","proxy-authenticate","proxy-authorization",
+               "te","trailers","transfer-encoding","upgrade","content-encoding","content-length"}
+
+async def _is_safe_target(url: str) -> bool:
+    parsed = urlparse(url)
+    hostname = parsed.hostname
+    if not hostname:
+        return False
+    try:
+        ip = socket.gethostbyname(hostname)
+        ip_obj = ipaddress.ip_address(ip)
+        if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local:
+            return False
+    except socket.gaierror:
+        return False
+    if PROXY_WHITELIST is not None:
+        return any(hostname.endswith(d) for d in PROXY_WHITELIST)
+    return True
+
+@app.api_route("/proxy/{target_url:path}", methods=["GET","POST","PUT","DELETE","PATCH","HEAD","OPTIONS"])
+@limiter.limit("30/minute")
+async def http_proxy(target_url: str, request: Request, _=Depends(require_auth)):
+    if not target_url.startswith(("http://", "https://")):
+        target_url = "https://" + target_url
+
+    if not await _is_safe_target(target_url):
+        raise HTTPException(status_code=403, detail="Target URL is not allowed")
+
+    headers = {
+        k: v for k, v in request.headers.items()
+        if k.lower() not in _HOP_BY_HOP and k.lower() != "host"
+    }
+
+    try:
+        req = http_client.build_request(
+            method=request.method,
+            url=target_url,
+            headers=headers,
+            content=request.stream(),
+        )
+        resp = await http_client.send(req, stream=True)
+        stats["total_requests"] += 1
+
+        async def response_streamer():
+            async for chunk in resp.aiter_bytes():
+                stats["total_bytes"] += len(chunk)
+                stats["download_bytes"] += len(chunk)
+                yield chunk
+
+        response_headers = {
+            k: v for k, v in resp.headers.items()
+            if k.lower() not in _HOP_BY_HOP
+        }
+        return StreamingResponse(
+            response_streamer(),
+            status_code=resp.status_code,
+            headers=response_headers,
+        )
+    except httpx.RequestError as e:
+        stats["total_errors"] += 1
+        error_logs.append({
+            "time": datetime.now(timezone.utc).isoformat(),
+            "error": f"Proxy error: {e}",
+            "url": target_url,
+            "type": "Proxy",
+        })
+        raise HTTPException(status_code=502, detail=f"Proxy error: {e}")
+    except Exception as e:
+        stats["total_errors"] += 1
+        error_logs.append({
+            "time": datetime.now(timezone.utc).isoformat(),
+            "error": f"Proxy error: {e}",
+            "url": target_url,
+            "type": "Proxy",
+        })
+        raise HTTPException(status_code=502, detail=f"Proxy error: {e}")
+# ───────────────────────────────────────────────────────────────────────────
+
 IP_FLAG_CACHE: Dict[str, str] = {}
 IP_FLAG_CACHE_LOCK = asyncio.Lock()
 IP_FLAG_CACHE_MAX = 1024
@@ -3550,90 +3629,7 @@ async def doh_handler(request: Request):
             return Response(content=result, media_type="application/dns-message")
     return Response("All upstreams failed", status_code=502)
 
-# ------------------ HTTP Proxy (Secure + Streaming) ------------------
-_HOP_BY_HOP = {"connection","keep-alive","proxy-authenticate","proxy-authorization",
-               "te","trailers","transfer-encoding","upgrade","content-encoding","content-length"}
-
-http_proxy_client = httpx.AsyncClient(timeout=30.0, follow_redirects=True)
-
-PROXY_WHITELIST = set(
-    d.strip() for d in os.environ.get("PROXY_WHITELIST", "").split(",") if d.strip()
-) if os.environ.get("PROXY_WHITELIST") else None
-
-async def _is_safe_target(url: str) -> bool:
-    """Block private / loopback / link‑local IPs and enforce optional whitelist."""
-    parsed = urlparse(url)
-    hostname = parsed.hostname
-    if not hostname:
-        return False
-    try:
-        ip = socket.gethostbyname(hostname)
-        ip_obj = ipaddress.ip_address(ip)
-        if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local:
-            return False
-    except socket.gaierror:
-        return False
-    if PROXY_WHITELIST is not None:
-        return any(hostname.endswith(d) for d in PROXY_WHITELIST)
-    return True
-
-@app.api_route("/proxy/{target_url:path}", methods=["GET","POST","PUT","DELETE","PATCH","HEAD","OPTIONS"])
-@limiter.limit("30/minute")
-async def http_proxy(target_url: str, request: Request, _=Depends(require_auth)):
-    if not target_url.startswith(("http://", "https://")):
-        target_url = "https://" + target_url
-
-    if not await _is_safe_target(target_url):
-        raise HTTPException(status_code=403, detail="Target URL is not allowed")
-
-    headers = {
-        k: v for k, v in request.headers.items()
-        if k.lower() not in _HOP_BY_HOP and k.lower() != "host"
-    }
-
-    try:
-        req = http_proxy_client.build_request(
-            method=request.method,
-            url=target_url,
-            headers=headers,
-            content=request.stream(),
-        )
-        resp = await http_proxy_client.send(req, stream=True)
-        stats["total_requests"] += 1
-
-        async def response_streamer():
-            async for chunk in resp.aiter_bytes():
-                stats["total_bytes"] += len(chunk)
-                stats["download_bytes"] += len(chunk)
-                yield chunk
-
-        response_headers = {
-            k: v for k, v in resp.headers.items()
-            if k.lower() not in _HOP_BY_HOP
-        }
-        return StreamingResponse(
-            response_streamer(),
-            status_code=resp.status_code,
-            headers=response_headers,
-        )
-    except httpx.RequestError as e:
-        stats["total_errors"] += 1
-        error_logs.append({
-            "time": datetime.now(timezone.utc).isoformat(),
-            "error": f"Proxy error: {e}",
-            "url": target_url,
-            "type": "Proxy",
-        })
-        raise HTTPException(status_code=502, detail=f"Proxy error: {e}")
-    except Exception as e:
-        stats["total_errors"] += 1
-        error_logs.append({
-            "time": datetime.now(timezone.utc).isoformat(),
-            "error": f"Proxy error: {e}",
-            "url": target_url,
-            "type": "Proxy",
-        })
-        raise HTTPException(status_code=502, detail=f"Proxy error: {e}")
+# ------------------ HTTP
 
 # ------------------ Blocked Domains API ------------------
 @app.get("/api/blocked-domains")
@@ -7250,7 +7246,7 @@ example.com
         <div style="display:flex;gap:6px;"><button class="btn btn-primary" onclick="saveTelegramSettings()" data-en="Save" data-fa="ذخیره">Save</button><button class="btn btn-outline btn-sm" onclick="testTelegram()" data-en="Test" data-fa="تست">Test</button></div>
       </div>
     </section>
-    <section class="page" id="page-settings">
+        <section class="page" id="page-settings">
       <div class="page-header"><div class="page-title" data-en="Settings" data-fa="تنظیمات">Settings</div></div>
       <div class="card">
         <div class="fg"><label class="fl" data-en="Login Text" data-fa="متن ورود">Login Text</label><input class="fi" id="set-footer"></div>
@@ -7373,6 +7369,18 @@ example.com
               <input type="hidden" id="set-tg-notify" value="1">
             </div>
           </div>
+        </div>
+        <!-- Cloudflare WARP & Restart -->
+        <div class="fg" style="margin-top:20px;">
+          <label class="fl" data-en="Cloudflare WARP" data-fa="تونل WARP">Cloudflare WARP</label>
+          <div class="status-cards-grid">
+            <div class="status-glass-card inactive" id="card-warp" onclick="toggleSettingCard('card-warp', 'set-warp-enabled')">
+              <span style="font-size:1.5rem;">🌩️</span><span data-en="WARP Tunnel" data-fa="تونل WARP">WARP Tunnel</span>
+              <small data-en="Restart required after change" data-fa="نیاز به راه‌اندازی مجدد پس از تغییر">Restart required after change</small>
+              <input type="hidden" id="set-warp-enabled" value="0">
+            </div>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="restartApp()" style="margin-top:8px;" data-en="Restart App" data-fa="راه‌اندازی مجدد">🔄 Restart App</button>
         </div>
         <hr style="border-color:var(--border);margin:14px 0;">
         <div class="mo-title" data-en="Change Password" data-fa="تغییر رمز عبور" style="margin-bottom:14px;">Change Password</div>
@@ -7515,8 +7523,13 @@ example.com
           <input class="fi" id="aalpn-custom" placeholder="e.g. h2,http/1.1" style="display:none; margin-top:5px;">
           <input type="hidden" id="aalpn" value="http/1.1">
         </div>
-        <div class="fg"><label class="fl">Port</label><input class="fi" type="number" id="aport" min="1" max="65535" value="443"></div>
-      </div>
+        <div class="fg"><label class="fl">Port</label><input class="fi" type="number" id="aport" min="1" max="65535" value="443">
+<small style="color:var(--text3); display:block; margin-top:4px;"
+       data-en="Allowed ports: 443, 2053, 2083, 2087, 2096, 8443 (Cloudflare). Container listens on fixed port."
+       data-fa="پورت‌های مجاز: ۴۴۳, ۲۰۵۳, ۲۰۸۳, ۲۰۸۷, ۲۰۹۶, ۸۴۴۳ (کلادفلر). پورت کانتینر ثابت می‌ماند.">
+  Allowed ports: 443, 2053, 2083, 2087, 2096, 8443 (Cloudflare). Container listens on fixed port.
+</small>
+        </div>
     </div>
     <div class="fg"><label class="fl" data-en="Traffic Limit (GB)" data-fa="محدودیت ترافیک (گیگابایت)">Traffic Limit (GB)</label><input class="fi" type="number" id="nv" min="0" step="0.1" value="0" placeholder="0 = Unlimited"></div>
     <div class="fg"><label class="fl" data-en="Max Connections" data-fa="حداکثر اتصالات">Max Connections</label><input class="fi" type="number" id="nc" min="0" value="0" placeholder="0 = Unlimited"></div>
@@ -7631,8 +7644,13 @@ example.com
           <input class="fi" id="ealpn-custom" placeholder="e.g. h2,http/1.1" style="display:none; margin-top:5px;">
           <input type="hidden" id="ealpn" value="http/1.1">
         </div>
-        <div class="fg"><label class="fl">Port</label><input class="fi" type="number" id="eport" min="1" max="65535" value="443"></div>
-      </div>
+        <div class="fg"><label class="fl">Port</label><input class="fi" type="number" id="aport" min="1" max="65535" value="443">
+<small style="color:var(--text3); display:block; margin-top:4px;"
+       data-en="Allowed ports: 443, 2053, 2083, 2087, 2096, 8443 (Cloudflare). Container listens on fixed port."
+       data-fa="پورت‌های مجاز: ۴۴۳, ۲۰۵۳, ۲۰۸۳, ۲۰۸۷, ۲۰۹۶, ۸۴۴۳ (کلادفلر). پورت کانتینر ثابت می‌ماند.">
+  Allowed ports: 443, 2053, 2083, 2087, 2096, 8443 (Cloudflare). Container listens on fixed port.
+</small>
+        </div>
     </div>
     <div class="fg"><label class="fl" data-en="Traffic Limit (GB)" data-fa="محدودیت ترافیک (گیگابایت)">Traffic Limit (GB)</label><input class="fi" type="number" id="el" min="0" step="0.1" placeholder="0 = Unlimited"></div>
     <div class="fg"><label class="fl" data-en="Max Connections" data-fa="حداکثر اتصالات">Max Connections</label><input class="fi" type="number" id="ec" min="0" placeholder="0 = Unlimited"></div>
@@ -9766,6 +9784,25 @@ async function loadGeneralSettings(){
     else { toggleCustomTZInput(true); $m('custom-tz-value').value=timezoneOffset; }
     
     const savedTheme = d.theme_color || 'dark'; setPanelTheme(savedTheme);
+
+    // WARP status
+    fetch('/api/warp/status')
+      .then(r => r.json())
+      .then(data => {
+        const card = document.getElementById('card-warp');
+        const input = document.getElementById('set-warp-enabled');
+        if (data.enabled) {
+          card.classList.add('active');
+          card.classList.remove('inactive');
+          input.value = '1';
+        } else {
+          card.classList.remove('active');
+          card.classList.add('inactive');
+          input.value = '0';
+        }
+      })
+      .catch(err => console.error('Failed to fetch WARP status:', err));
+
   } catch(e) { console.error('General Settings Load Error:', e); }
 }
 
@@ -9795,6 +9832,12 @@ async function saveGeneralSettings(){
   const camouflageUrl = $m('set-camouflage-url').value.trim();
   const subFilename = $m('set-sub-filename').value.trim();
   const panelPrefixVal = $m('set-panel-prefix').value.trim();
+  const warpEnabled = document.getElementById('set-warp-enabled').value === '1';
+  await fetch('/api/warp/toggle', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({enabled: warpEnabled})
+  });
 
   await saveDohUpstreams();
   try {
@@ -9823,6 +9866,20 @@ async function saveGeneralSettings(){
         loadGeneralSettings();
     }
   } catch { toast('Error saving settings', true); }
+}
+async function restartApp() {
+  if (!confirm('Are you sure you want to restart the application? This will cause a brief downtime.')) return;
+  try {
+    const resp = await fetch('/api/restart', { method: 'POST' });
+    if (resp.ok) {
+      toast('Restarting...');
+      setTimeout(() => location.reload(), 3000);
+    } else {
+      toast('Restart failed', true);
+    }
+  } catch (e) {
+    toast('Restart failed', true);
+  }
 }
 function generateUUID(id){const uuid=crypto.randomUUID?crypto.randomUUID():'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return(c=='x'?r:(r&0x3|0x8)).toString(16);});$m(id).value=uuid;}
 function toggleAdv(id){const el=$m(id);el.style.display=el.style.display==='none'?'block':'none';}
@@ -9891,7 +9948,53 @@ async function saveBlockedDomains() {
 </body>
 </html>"""
 
-# ... (PANEL_HTML variable remains unchanged, containing all HTML/JS/CSS) ...
+# ... (PANEL_HTML/WARP) ...
+
+# ------------------ WARP Management ------------------
+WARP_STATE_FILE = "/data/warp_state.json"
+
+async def _read_warp_state() -> dict:
+    try:
+        if os.path.exists(WARP_STATE_FILE):
+            async with aiofiles.open(WARP_STATE_FILE, "r") as f:
+                content = await f.read()
+            return json.loads(content)
+    except Exception:
+        pass
+    return {"enabled": False, "last_toggled": None}
+
+async def _write_warp_state(state: dict):
+    os.makedirs(os.path.dirname(WARP_STATE_FILE), exist_ok=True)
+    async with aiofiles.open(WARP_STATE_FILE, "w") as f:
+        await f.write(json.dumps(state, indent=2))
+
+@app.get("/api/warp/status")
+async def get_warp_status(_: str = Depends(require_auth)):
+    state = await _read_warp_state()
+    return {"enabled": state.get("enabled", False)}
+
+@app.post("/api/warp/toggle")
+async def toggle_warp(request: Request, _: str = Depends(require_auth)):
+    body = await request.json()
+    enabled = bool(body.get("enabled", False))
+    state = await _read_warp_state()
+    state["enabled"] = enabled
+    state["last_toggled"] = datetime.now(timezone.utc).isoformat()
+    await _write_warp_state(state)
+    log_event("WARP", f"WARP tunnel {'enabled' if enabled else 'disabled'} by admin")
+    return {"ok": True, "enabled": enabled, "restart_required": True}
+
+@app.post("/api/restart")
+async def restart_app(_: str = Depends(require_auth)):
+    async def _restart():
+        await asyncio.sleep(1)
+        os._exit(0)
+    background_tasks = BackgroundTasks()
+    background_tasks.add_task(_restart)
+    return JSONResponse(
+        {"ok": True, "message": "Application is restarting..."},
+        background=background_tasks
+    )
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
@@ -9924,12 +10027,14 @@ async def panel_page(request: Request):
 async def dynamic_xhttp_router(full_path: str, request: Request):
     """
     Catch‑all router for XHTTP traffic.
-    Handles three path formats:
-      - stream-one:        POST <base_path>                         (exact base path)
+    Handles any custom path defined in an inbound, plus the default XHTTP path.
+    Supports three path formats:
+      - stream-one:        POST <custom_path>                         (exact base path)
       - stream-up/packet-up:
-           <base_path>/<mode>/<user_uuid>/<session_id>[/<seq>]
-      - legacy (no mode):  <base_path>/<session_id>[/<seq>]         (kept for compatibility)
+           <custom_path>/<mode>/<user_uuid>/<session_id>[/<seq>]
+      - legacy (no mode):  <custom_path>/<session_id>[/<seq>]         (kept for compatibility)
     """
+
     base_paths = set()
     async with LINKS_LOCK:
         for uid, link in LINKS.items():
@@ -9954,7 +10059,7 @@ async def dynamic_xhttp_router(full_path: str, request: Request):
 
     matched_base = None
     for bp in sorted(base_paths, key=lambda x: -len(x)):
-        if full_path.startswith(bp + "/"):
+        if full_path == bp or full_path.startswith(bp + "/"):
             matched_base = bp
             break
 
@@ -9962,16 +10067,16 @@ async def dynamic_xhttp_router(full_path: str, request: Request):
         raise HTTPException(status_code=404)
 
     remaining = full_path[len(matched_base):].strip("/")
-    parts = remaining.split("/")
+    parts = remaining.split("/") if remaining else []
 
     VALID_MODES = {"stream-up", "packet-up", "stream-down"}
     if parts and parts[0] in VALID_MODES:
         if len(parts) >= 3:
             parts = parts[2:]
         elif len(parts) == 2:
-            parts = []
+            parts = parts[1:]
         else:
-            parts = parts[1:] 
+            parts = []
 
     if len(parts) == 1:
         session_id = parts[0]
@@ -9996,12 +10101,12 @@ async def dynamic_xhttp_router(full_path: str, request: Request):
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", CONFIG.get("port", 8000)))
-    logger.info(f"Starting SulgX Panel on port {port}")
+    listen_port = int(os.environ.get("PORT", 8000))
+    logger.info(f"Starting SulgX Panel on port {listen_port}")
     uvicorn.run(
         app,
         host="0.0.0.0",
-        port=port,
+        port=listen_port,
         proxy_headers=True,
         forwarded_allow_ips="*",
         log_level="info",
