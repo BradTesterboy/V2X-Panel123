@@ -3,11 +3,9 @@ set -e
 
 export HOME=/home/sulgx
 
-# Ensure /data directory exists (create if not)
 mkdir -p /data 2>/dev/null || true
 chown -R sulgx:sulgx /data 2>/dev/null || true
 
-# ---------- Cloudflare WARP Hybrid Engine ----------
 WARP_STATE_FILE="/data/warp_state.json"
 WARP_DATA_DIR="/data/cloudflare-warp"
 
@@ -42,20 +40,16 @@ if [ "$WARP_ENABLED" = "true" ]; then
     warp-svc > /dev/null 2>&1 &
     sleep 5
 
-    # Register (both old and new CLI syntax) – non‑fatal if fails
     warp-cli --accept-tos registration new > /dev/null 2>&1 || \
     warp-cli --accept-tos register > /dev/null 2>&1 || true
 
-    # Apply mode and proxy port – non‑fatal
     warp-cli --accept-tos mode "$WARP_MODE" > /dev/null 2>&1 || true
     if [ "$WARP_MODE" = "proxy" ]; then
         warp-cli --accept-tos proxy port 40000 > /dev/null 2>&1 || true
     fi
 
-    # Connect – non‑fatal (WARP may still work partially)
     warp-cli --accept-tos connect > /dev/null 2>&1 || true
 
-    # Persist identity for next restart
     cp -r /var/lib/cloudflare-warp/* "$WARP_DATA_DIR/" 2>/dev/null || true
     chown -R sulgx:sulgx "$WARP_DATA_DIR" 2>/dev/null || true
 
@@ -71,6 +65,5 @@ if [ "$WARP_ENABLED" = "true" ]; then
 else
     echo ">>> WARP is disabled via Settings. Skipping initialization."
 fi
-# --------------------------------------------------
 
 exec gosu sulgx python main.py
