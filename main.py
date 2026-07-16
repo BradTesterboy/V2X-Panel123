@@ -7190,11 +7190,14 @@ example.com
         <div style="display:flex;gap:6px;"><button class="btn btn-primary" onclick="saveTelegramSettings()" data-en="Save" data-fa="ذخیره">Save</button><button class="btn btn-outline btn-sm" onclick="testTelegram()" data-en="Test" data-fa="تست">Test</button></div>
       </div>
     </section>
-        <section class="page" id="page-settings">
+            <section class="page" id="page-settings">
       <div class="page-header"><div class="page-title" data-en="Settings" data-fa="تنظیمات">Settings</div></div>
       <div class="card">
+        <!-- Login Text -->
         <div class="fg"><label class="fl" data-en="Login Text" data-fa="متن ورود">Login Text</label><input class="fi" id="set-footer"></div>
+        <!-- Default Path -->
         <div class="fg"><label class="fl" data-en="Default Path" data-fa="مسیر پیش‌فرض">Default Path</label><input class="fi" id="set-default-path" placeholder="/ws/{uid}"></div>
+        <!-- Timezone -->
         <div class="fg">
           <label class="fl" data-en="Timezone / Region" data-fa="منطقه زمانی / ساعت">Timezone / Region</label>
           <div class="glass-btn-group" id="tz-glass-group">
@@ -7206,6 +7209,7 @@ example.com
             <input type="text" class="fi" id="custom-tz-value" placeholder="e.g. Asia/Tehran or +3.5" oninput="applyCustomTZ(this.value)">
           </div>
         </div>
+        <!-- Theme -->
         <div class="fg">
           <label class="fl" data-en="Interface Theme" data-fa="تم محیط کاربری">Interface Theme</label>
           <div class="glass-btn-group" id="theme-glass-group">
@@ -7215,6 +7219,7 @@ example.com
           </div>
           <input type="hidden" id="set-theme-color" value="dark">
         </div>
+        <!-- Language -->
         <div class="fg">
           <label class="fl" data-en="Panel Language" data-fa="زبان پنل">Panel Language</label>
           <div class="glass-btn-group" id="lang-glass-group">
@@ -7222,6 +7227,7 @@ example.com
             <button type="button" class="glass-btn" id="btn-lang-fa" onclick="setPanelLanguage('fa')">فارسی</button>
           </div>
         </div>
+        <!-- Keep Alive -->
         <div class="fg"><label class="fl" data-en="Keep Alive" data-fa="ضدخواب">Keep Alive</label>
           <div class="glass-btn-group" id="keepalive-mode-group">
             <button type="button" class="glass-btn active" id="btn-keepalive-simple" onclick="setKeepAliveMode('simple')">Simple</button>
@@ -7238,12 +7244,16 @@ example.com
         <div class="fg"><label class="fl" data-en="Keep Alive Interval (seconds)" data-fa="فاصله ضدخواب (ثانیه)">Interval</label>
           <input class="fi" type="number" id="set-keep-alive-interval" placeholder="300" min="60">
         </div>
+        <!-- Default Limits -->
         <div class="fg"><label class="fl" data-en="Default Traffic Limit (GB)" data-fa="محدودیت ترافیک پیش‌فرض (گیگابایت)">Default Traffic Limit (GB)</label><input class="fi" type="number" id="set-default-limit" placeholder="0 = Unlimited"></div>
         <div class="fg"><label class="fl" data-en="Default Expiry (Days)" data-fa="انقضای پیش‌فرض (روز)">Default Expiry (Days)</label><input class="fi" type="number" id="set-default-expiry" placeholder="0 = Unlimited"></div>
         <div class="fg"><label class="fl" data-en="Default Max Connections" data-fa="حداکثر اتصالات پیش‌فرض">Default Max Connections</label><input class="fi" type="number" id="set-default-maxconn" placeholder="0 = Unlimited"></div>
+        <!-- Scanner -->
         <div class="fg"><label class="fl" data-en="Scanner Timeout (seconds)" data-fa="تایم‌اوت اسکنر (ثانیه)">Scanner Timeout (seconds)</label><input class="fi" type="number" id="set-scanner-timeout" placeholder="4"></div>
         <div class="fg"><label class="fl" data-en="Max Scan IPs" data-fa="حداکثر آی‌پی اسکن">Max Scan IPs</label><input class="fi" type="number" id="set-max-scan-ips" placeholder="256"></div>
+        <!-- Monthly Limit -->
         <div class="fg"><label class="fl" data-en="Monthly Limit (GB)" data-fa="محدودیت ماهانه (گیگابایت)">Monthly Limit (GB)</label><input class="fi" type="number" id="set-monthly-limit" placeholder="0 = Unlimited"></div>
+        <!-- DoH -->
         <div class="fg">
           <label class="fl" data-en="DoH Upstreams" data-fa="Upstreamهای DoH">DoH Upstreams</label>
           <div class="pill-group" id="doh-presets"></div>
@@ -7270,6 +7280,7 @@ example.com
             </div>
           </div>
         </div>
+        <!-- Anti-Abuse & Stealth -->
         <div class="fg" style="margin-top:10px; padding:15px; background:rgba(251,191,36,0.05); border:1px solid rgba(251,191,36,0.3); border-radius:16px;">
           <label class="fl" style="color:var(--yellow);" data-en="Anti-Abuse & Stealth" data-fa="ضد ابیوز و استتار">Anti-Abuse & Stealth</label>
           <div class="status-cards-grid" style="margin-bottom:10px;">
@@ -7293,6 +7304,7 @@ example.com
             <button class="btn btn-outline btn-sm" onclick="saveBlockedDomains()" data-en="Save" data-fa="ذخیره">Save</button>
           </div>
         </div>
+        <!-- System Toggles -->
         <div class="fg" style="margin-top:20px;">
           <label class="fl" data-en="System Toggles" data-fa="وضعیت تنظیمات">System Toggles</label>
           <div class="status-cards-grid">
@@ -7326,6 +7338,7 @@ example.com
           </div>
           <button class="btn btn-outline btn-sm" onclick="restartApp()" style="margin-top:8px;" data-en="Restart App" data-fa="راه‌اندازی مجدد">🔄 Restart App</button>
         </div>
+        <!-- Change Password -->
         <hr style="border-color:var(--border);margin:14px 0;">
         <div class="mo-title" data-en="Change Password" data-fa="تغییر رمز عبور" style="margin-bottom:14px;">Change Password</div>
         <div class="fg"><label class="fl" data-en="Current Password" data-fa="رمز فعلی">Current Password</label><input class="fi" type="password" id="cpw"></div>
@@ -9730,22 +9743,22 @@ async function loadGeneralSettings(){
     const savedTheme = d.theme_color || 'dark'; setPanelTheme(savedTheme);
 
     // WARP status
-    fetch('/api/warp/status')
-      .then(r => r.json())
-      .then(data => {
-        const card = document.getElementById('card-warp');
-        const input = document.getElementById('set-warp-enabled');
-        if (data.enabled) {
-          card.classList.add('active');
-          card.classList.remove('inactive');
-          input.value = '1';
-        } else {
-          card.classList.remove('active');
-          card.classList.add('inactive');
-          input.value = '0';
-        }
-      })
-      .catch(err => console.error('Failed to fetch WARP status:', err));
+    fetch('/api/warp/status', { cache: 'no-cache' })
+  .then(r => r.json())
+  .then(data => {
+    const card = document.getElementById('card-warp');
+    const input = document.getElementById('set-warp-enabled');
+    if (data.enabled) {
+      card.classList.add('active');
+      card.classList.remove('inactive');
+      input.value = '1';
+    } else {
+      card.classList.remove('active');
+      card.classList.add('inactive');
+      input.value = '0';
+    }
+  })
+  .catch(err => console.error('Failed to fetch WARP status:', err));
 
   } catch(e) { console.error('General Settings Load Error:', e); }
 }
@@ -9813,14 +9826,10 @@ async function saveGeneralSettings(){
 }
 async function restartApp() {
   if (!confirm('Are you sure you want to restart the application? This will cause a brief downtime.')) return;
+  toast('Restarting...');
   try {
-    const resp = await fetch('/api/restart', { method: 'POST' });
-    if (resp.ok) {
-      toast('Restarting...');
-      setTimeout(() => location.reload(), 3000);
-    } else {
-      toast('Restart failed', true);
-    }
+    fetch('/api/restart', { method: 'POST' });
+    setTimeout(() => location.reload(), 3000);
   } catch (e) {
     toast('Restart failed', true);
   }
