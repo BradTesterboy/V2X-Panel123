@@ -21,6 +21,8 @@ if [ "$WARP_ENABLED" = "true" ]; then
     echo ">>> Initializing Cloudflare WARP..."
 
     mkdir -p "$WARP_DATA_DIR"
+    mkdir -p /var/lib/cloudflare-warp
+    mkdir -p /run/cloudflare-warp
 
     if [ -e /dev/net/tun ]; then
         echo ">>> TUN device detected. Operating in Global VPN (TUN) Mode."
@@ -35,27 +37,29 @@ if [ "$WARP_ENABLED" = "true" ]; then
 
     if [ -f "$WARP_DATA_DIR/conf.json" ]; then
         echo ">>> Restoring persisted WARP identity..."
-        mkdir -p /var/lib/cloudflare-warp
         cp -r "$WARP_DATA_DIR"/* /var/lib/cloudflare-warp/ 2>/dev/null || true
     fi
 
     echo ">>> Launching warp-svc daemon..."
     warp-svc > /dev/null 2>&1 &
-    sleep 4
+    sleep 5
 
-    if ! warp-cli --accept-tos account 2>/dev/null | grep -q "Account type"; then
-        echo ">>> Registering new WARP client..."
-        warp-cli --accept-tos register
-        cp -r /var/lib/cloudflare-warp/* "$WARP_DATA_DIR/" 2>/dev/null || true
-        chown -R sulgx:sulgx "$WARP_DATA_DIR" 2>/dev/null || true
-    fi
+    # Register (support both old and new CLI syntax)
+    warp-cli --accept-tos registration new > /dev/null 2>&1 || warp-cli --accept-tos register > /dev/null 2>&1
 
-    warp-cli --accept-tos set-mode "$WARP_MODE"
+    # Apply mode and proxy port
+    warp-cli --accept-tos mode "$WARP_MODE" > /dev/null 2>&1
     if [ "$WARP_MODE" = "proxy" ]; then
-        warp-cli --accept-tos set-proxy-port 40000
+        warp-cli --accept-tos proxy port 40000 > /dev/null 2>&1
     fi
 
-    warp-cli --accept-tos connect
+    # Connect
+    warp-cli --accept-tos connect > /dev/null 2>&1
+
+    # Persist identity for next start
+    cp -r /var/lib/cloudflare-warp/* "$WARP_DATA_DIR/" 2>/dev/null || true
+    chown -R sulgx:sulgx "$WARP_DATA_DIR" 2>/dev/null || true
+
     sleep 6
 
     if [ "$WARP_MODE" = "warp" ]; then
