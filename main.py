@@ -6969,7 +6969,7 @@ textarea.fi { resize: vertical; min-height: 130px; }
       <div style="display:flex;align-items:center;gap:16px;">
         <span class="logo">SulgX</span><span class="version-tag">v1.5.3</span>
         <span id="panel-clock" style="font-weight:600;color:var(--primary);margin-left:8px;font-size:0.9rem;"></span>
-<span id="warp-indicator" style="margin-left:12px; font-size:0.75rem; font-weight:700; padding:2px 10px; border-radius:12px;"></span>
+<span id="warp-indicator" style="margin-left:12px; font-size:0.75rem; font-weight:700; padding:2px 10px; border-radius:12px; transition: all 0.3s ease;"></span>
         <nav class="header-nav" id="mainNav">
           <button class="nav-link active" data-page="dashboard">📊 <span data-en="Dashboard" data-fa="داشبورد">Dashboard</span></button>
           <button class="nav-link" data-page="inbounds">📡 <span data-en="Inbounds" data-fa="اینباندها">Inbounds</span></button>
@@ -9887,7 +9887,7 @@ async function saveGeneralSettings() {
 function updateWarpIndicator(data) {
     const indicator = document.getElementById('warp-indicator');
     if (!indicator) return;
-    
+
     if (data && data.connected) {
         indicator.textContent = (lang === 'fa' ? '🟢 وارپ فعال' : '🟢 WARP Active');
         indicator.style.background = 'rgba(74,222,128,0.15)';
@@ -9898,6 +9898,9 @@ function updateWarpIndicator(data) {
         indicator.style.background = 'rgba(251,191,36,0.15)';
         indicator.style.color = '#fbbf24';
         indicator.style.border = '1px solid rgba(251,191,36,0.4)';
+        if (data.debug_info && data.debug_info !== 'OK') {
+            console.warn('WARP connection issue: ' + data.debug_info);
+        }
     } else {
         indicator.textContent = (lang === 'fa' ? '⚫ وارپ خاموش' : '⚫ WARP Off');
         indicator.style.background = 'rgba(113,113,122,0.15)';
@@ -10087,6 +10090,8 @@ async def get_warp_status(_: str = Depends(require_auth)):
     state = await _read_warp_state()
     enabled = state.get("enabled", False)
     connected = False
+    error_msg = None
+
     if enabled:
         try:
             import socket
@@ -10095,18 +10100,32 @@ async def get_warp_status(_: str = Depends(require_auth)):
             s.connect(("127.0.0.1", 40000))
             s.close()
             connected = True
-        except Exception:
+        except Exception as e:
+            error_msg = f"SOCKS5 port 40000 connection failed: {str(e)}"
+
+        if not connected:
             try:
-                import subprocess
-                result = subprocess.run(
-                    ["ip", "link", "show", "CloudflareWARP"],
-                    capture_output=True, text=True, timeout=2
+                import urllib.request
+                req = urllib.request.Request(
+                    "https://1.1.1.1/cdn-cgi/trace",
+                    headers={"User-Agent": "Mozilla/5.0"}
                 )
-                if "CloudflareWARP" in result.stdout:
-                    connected = True
-            except Exception:
-                pass
-    return {"enabled": enabled, "connected": connected}
+                with urllib.request.urlopen(req, timeout=2.0) as response:
+                    content = response.read().decode("utf-8")
+                    if "warp=on" in content or "warp=plus" in content:
+                        connected = True
+                        error_msg = None
+            except Exception as e:
+                if error_msg:
+                    error_msg += f" | TUN verification failed: {str(e)}"
+                else:
+                    error_msg = f"TUN verification failed: {str(e)}"
+
+    return {
+        "enabled": enabled,
+        "connected": connected,
+        "debug_info": error_msg if (enabled and not connected) else "OK"
+    }
 
 @app.post("/api/warp/toggle")
 async def toggle_warp(request: Request, _: str = Depends(require_auth)):
