@@ -3,9 +3,9 @@ set -e
 
 export HOME=/home/sulgx
 
-if [ -d /data ]; then
-    chown -R sulgx:sulgx /data 2>/dev/null || true
-fi
+# Ensure /data directory exists (create if not)
+mkdir -p /data 2>/dev/null || true
+chown -R sulgx:sulgx /data 2>/dev/null || true
 
 # ---------- Cloudflare WARP Hybrid Engine ----------
 WARP_STATE_FILE="/data/warp_state.json"
@@ -20,9 +20,7 @@ fi
 if [ "$WARP_ENABLED" = "true" ]; then
     echo ">>> Initializing Cloudflare WARP..."
 
-    mkdir -p "$WARP_DATA_DIR"
-    mkdir -p /var/lib/cloudflare-warp
-    mkdir -p /run/cloudflare-warp
+    mkdir -p "$WARP_DATA_DIR" /var/lib/cloudflare-warp /run/cloudflare-warp
 
     if [ -e /dev/net/tun ]; then
         echo ">>> TUN device detected. Operating in Global VPN (TUN) Mode."
@@ -44,19 +42,20 @@ if [ "$WARP_ENABLED" = "true" ]; then
     warp-svc > /dev/null 2>&1 &
     sleep 5
 
-    # Register (support both old and new CLI syntax)
-    warp-cli --accept-tos registration new > /dev/null 2>&1 || warp-cli --accept-tos register > /dev/null 2>&1
+    # Register (both old and new CLI syntax) – non‑fatal if fails
+    warp-cli --accept-tos registration new > /dev/null 2>&1 || \
+    warp-cli --accept-tos register > /dev/null 2>&1 || true
 
-    # Apply mode and proxy port
-    warp-cli --accept-tos mode "$WARP_MODE" > /dev/null 2>&1
+    # Apply mode and proxy port – non‑fatal
+    warp-cli --accept-tos mode "$WARP_MODE" > /dev/null 2>&1 || true
     if [ "$WARP_MODE" = "proxy" ]; then
-        warp-cli --accept-tos proxy port 40000 > /dev/null 2>&1
+        warp-cli --accept-tos proxy port 40000 > /dev/null 2>&1 || true
     fi
 
-    # Connect
-    warp-cli --accept-tos connect > /dev/null 2>&1
+    # Connect – non‑fatal (WARP may still work partially)
+    warp-cli --accept-tos connect > /dev/null 2>&1 || true
 
-    # Persist identity for next start
+    # Persist identity for next restart
     cp -r /var/lib/cloudflare-warp/* "$WARP_DATA_DIR/" 2>/dev/null || true
     chown -R sulgx:sulgx "$WARP_DATA_DIR" 2>/dev/null || true
 
@@ -68,9 +67,7 @@ if [ "$WARP_ENABLED" = "true" ]; then
         echo ">>> WARP active (SOCKS5). Egress IP via Proxy: $(curl -s --socks5-hostname 127.0.0.1:40000 --max-time 4 ifconfig.me || echo 'Unknown')"
     fi
 
-    if [ -d /data ]; then
-        chown -R sulgx:sulgx /data 2>/dev/null || true
-    fi
+    chown -R sulgx:sulgx /data 2>/dev/null || true
 else
     echo ">>> WARP is disabled via Settings. Skipping initialization."
 fi
