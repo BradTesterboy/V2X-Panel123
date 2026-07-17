@@ -6998,7 +6998,6 @@ textarea.fi { resize: vertical; min-height: 130px; }
       <div style="display:flex;align-items:center;gap:16px;">
         <span class="logo">SulgX</span><span class="version-tag">v1.5.3</span>
         <span id="panel-clock" style="font-weight:600;color:var(--primary);margin-left:8px;font-size:0.9rem;"></span>
-<span id="warp-indicator" style="margin-left:12px; font-size:0.75rem; font-weight:700; padding:2px 10px; border-radius:12px; transition: all 0.3s ease;"></span>
         <nav class="header-nav" id="mainNav">
           <button class="nav-link active" data-page="dashboard">📊 <span data-en="Dashboard" data-fa="داشبورد">Dashboard</span></button>
           <button class="nav-link" data-page="inbounds">📡 <span data-en="Inbounds" data-fa="اینباندها">Inbounds</span></button>
@@ -7344,16 +7343,6 @@ example.com
             </div>
           </div>
         </div>
-        <div class="fg" style="margin-top:20px;">
-          <label class="fl" data-en="Cloudflare WARP" data-fa="تونل WARP">Cloudflare WARP</label>
-          <div class="status-cards-grid">
-            <div class="status-glass-card inactive" id="card-warp" onclick="toggleSettingCard('card-warp', 'set-warp-enabled')">
-              <span style="font-size:1.5rem;">🌩️</span><span data-en="WARP Tunnel" data-fa="تونل WARP">WARP Tunnel</span>
-              <small data-en="Restart required after change" data-fa="نیاز به راه‌اندازی مجدد پس از تغییر">Restart required after change</small>
-              <input type="hidden" id="set-warp-enabled" value="0">
-            </div>
-          </div>
-        </div>
         <hr style="border-color:var(--border);margin:14px 0;">
         <div class="mo-title" data-en="Change Password" data-fa="تغییر رمز عبور" style="margin-bottom:14px;">Change Password</div>
         <div class="fg"><label class="fl" data-en="Current Password" data-fa="رمز فعلی">Current Password</label><input class="fi" type="password" id="cpw"></div>
@@ -7396,8 +7385,14 @@ example.com
   <div class="mo-box">
     <button class="mo-close" onclick="document.getElementById('mo-add').classList.remove('show')">✕</button>
     <div class="mo-title" data-en="Create Inbound" data-fa="ایجاد اینباند">Create Inbound</div>
-    <div class="fg"><label class="fl" data-en="Name" data-fa="نام">Name</label><input class="fi" id="nl" placeholder="Leave empty for random name" maxlength="60"></div>
-    <div class="fg"><label class="fl" data-en="Flag / Country" data-fa="پرچم / کشور">Flag / Country</label>
+    
+    <div class="fg">
+      <label class="fl" data-en="Name" data-fa="نام">Name</label>
+      <input class="fi" id="nl" placeholder="Leave empty for random name" maxlength="60">
+    </div>
+    
+    <div class="fg">
+      <label class="fl" data-en="Flag / Country" data-fa="پرچم / کشور">Flag / Country</label>
       <select class="fs" id="flag-select-create" onchange="applyFlagCreate()">
         <option value="">None</option>
         <option value="cn">🇨🇳 China</option>
@@ -7418,35 +7413,61 @@ example.com
       <input type="hidden" id="flag-code-create" value="">
       <button class="btn btn-outline btn-sm" onclick="autoDetectFlagCreate()" style="margin-top:4px;">🔍 Auto Detect</button>
     </div>
-    <div class="fg"><label class="fl">UUID</label><div style="display:flex;gap:6px;"><input class="fi" id="auuid" placeholder="Leave empty for auto-generate" style="flex:1;"><button class="btn btn-outline btn-sm" onclick="generateUUID('auuid')">🎲 Generate</button></div></div>
-    <div class="fg"><button class="adv-toggle" onclick="toggleAdv('adv-create')">▼ <span data-en="Advanced Options" data-fa="گزینه‌های پیشرفته">Advanced Options</span></button>
+    
+    <div class="fg">
+      <label class="fl">UUID</label>
+      <div style="display:flex;gap:6px;">
+        <input class="fi" id="auuid" placeholder="Leave empty for auto-generate" style="flex:1;">
+        <button class="btn btn-outline btn-sm" onclick="generateUUID('auuid')">🎲 Generate</button>
+      </div>
+    </div>
+    
+    <div class="fg">
+      <button class="adv-toggle" onclick="toggleAdv('adv-create')">▼ <span data-en="Advanced Options" data-fa="گزینه‌های پیشرفته">Advanced Options</span></button>
       <div id="adv-create" class="adv-section">
-        <div class="fg"><label class="fl" data-en="Profile" data-fa="پروفایل">Profile</label>
-          <select class="fs" id="ares-profile" onchange="applyProfileCreate()"><option value="">Custom</option><option value="default">Default</option><option value="youtube">YouTube</option><option value="instagram">Instagram</option><option value="twitter">Twitter</option><option value="tiktok">TikTok</option><option value="whatsapp">WhatsApp</option><option value="telegram">Telegram</option><option value="netflix">Netflix</option><option value="spotify">Spotify</option><option value="google">Google</option></select>
+        <div class="fg">
+          <label class="fl" data-en="Profile" data-fa="پروفایل">Profile</label>
+          <select class="fs" id="ares-profile" onchange="applyProfileCreate()">
+            <option value="">Custom</option>
+            <option value="default">Default</option>
+            <option value="youtube">YouTube</option>
+            <option value="instagram">Instagram</option>
+            <option value="twitter">Twitter</option>
+            <option value="tiktok">TikTok</option>
+            <option value="whatsapp">WhatsApp</option>
+            <option value="telegram">Telegram</option>
+            <option value="netflix">Netflix</option>
+            <option value="spotify">Spotify</option>
+            <option value="google">Google</option>
+          </select>
           <small style="color:var(--text3);font-size:0.75rem;">App profiles only change SNI/Host for DPI bypass and do not affect server connection.</small>
         </div>
         <div class="fg"><label class="fl">Path</label><input class="fi" id="ap" placeholder="/ws/{uid}"></div>
         <div class="fg"><label class="fl">SNI</label><input class="fi" id="asni" placeholder="example.com"></div>
         <div class="fg"><label class="fl">Host</label><input class="fi" id="ahost" placeholder="example.com"></div>
-        <div class="fg"><label class="fl">Fingerprint</label>
+        
+        <div class="fg">
+          <label class="fl">Fingerprint</label>
           <select class="fs" id="afingerprint-sel" onchange="toggleFingerprintCustom('create')">
-    <option value="none" selected>None / Disable</option>
-    <option value="chrome">Chrome</option>
-    <option value="firefox">Firefox</option>
-    <option value="safari">Safari</option>
-    <option value="ios">iOS</option>
-    <option value="android">Android</option>
-    <option value="edge">Edge</option>
-    <option value="360">360</option>
-    <option value="qq">QQ</option>
-    <option value="random">Random</option>
-    <option value="randomized">Randomized</option>
-    <option value="custom">Custom</option>
-</select>
+            <option value="none" selected>None / Disable</option>
+            <option value="chrome">Chrome</option>
+            <option value="firefox">Firefox</option>
+            <option value="safari">Safari</option>
+            <option value="ios">iOS</option>
+            <option value="android">Android</option>
+            <option value="edge">Edge</option>
+            <option value="360">360</option>
+            <option value="qq">QQ</option>
+            <option value="random">Random</option>
+            <option value="randomized">Randomized</option>
+            <option value="custom">Custom</option>
+          </select>
           <input class="fi" id="afingerprint-custom" placeholder="Enter custom fingerprint" style="display:none; margin-top:5px;">
           <input type="hidden" id="afingerprint" value="chrome">
         </div>
-        <div class="fg"><label class="fl">Fragment</label>
+        
+        <div class="fg">
+          <label class="fl">Fragment</label>
           <select class="fs" id="afrag-mode" onchange="toggleFragmentFields('create')">
             <option value="off">Off</option>
             <option value="tlshello">TLS Hello</option>
@@ -7458,13 +7479,17 @@ example.com
           </div>
           <input type="hidden" id="afrag" value="">
         </div>
+        
         <div class="fg"><label class="fl">IP Profile</label><select class="fs" id="aip-profile"></select></div>
-        <div class="fg"><label class="fl" data-en="Naming Mode" data-fa="شیوه نام‌گذاری">Naming Mode</label>
+        
+        <div class="fg">
+          <label class="fl" data-en="Naming Mode" data-fa="شیوه نام‌گذاری">Naming Mode</label>
           <select class="fs" id="anaming-mode">
             <option value="default">Default (SulgX-Name-Server1)</option>
             <option value="short">Short (SXP 1, SXP 2, ...)</option>
           </select>
         </div>
+        
         <div class="fg"><label class="fl">TCP Fast Open</label><div class="toggle" id="tfo-create" onclick="this.classList.toggle('on')"></div></div>
         <div class="fg"><label class="fl">ECH (Secure Hello)</label><div class="toggle" id="ech-create" onclick="this.classList.toggle('on'); toggleEchFields('create')"></div></div>
         <div id="ech-create-fields" style="display:none;">
@@ -7475,7 +7500,9 @@ example.com
         <div class="fg"><label class="fl">Random Path</label><div class="toggle" id="random-create" onclick="this.classList.toggle('on')"></div></div>
         <div class="fg"><label class="fl">SMUX</label><div class="toggle" id="smux-create" onclick="this.classList.toggle('on')"></div></div>
         <div class="fg"><label class="fl">IP Limit</label><input class="fi" type="number" id="aip-limit" min="0" value="0" placeholder="0 = Unlimited"></div>
-                <div class="fg"><label class="fl">Protocol</label>
+        
+        <div class="fg">
+          <label class="fl">Protocol</label>
           <select class="fs" id="aprotocol">
             <option value="vless-ws">VLESS + WS</option>
             <option value="xhttp-packet-up">XHTTP Packet-Up</option>
@@ -7484,32 +7511,57 @@ example.com
             <option value="xhttp-auto">XHTTP Auto</option>
           </select>
         </div>
-        <div class="fg"><label class="fl">ALPN</label>
+        
+        <div class="fg">
+          <label class="fl">ALPN</label>
           <select class="fs" id="aalpn-sel" onchange="toggleAlpnCustom('create')">
-    <option value="" selected>None (default)</option>
-    <option value="http/1.1">http/1.1</option>
-    <option value="h2,http/1.1">h2,http/1.1</option>
-    <option value="h2">h2</option>
-    <option value="h3">h3</option>
-    <option value="custom">Custom</option>
-</select>
+            <option value="" selected>None (default)</option>
+            <option value="http/1.1">http/1.1</option>
+            <option value="h2,http/1.1">h2,http/1.1</option>
+            <option value="h2">h2</option>
+            <option value="h3">h3</option>
+            <option value="custom">Custom</option>
+          </select>
           <input class="fi" id="aalpn-custom" placeholder="e.g. h2,http/1.1" style="display:none; margin-top:5px;">
           <input type="hidden" id="aalpn" value="http/1.1">
         </div>
-        <div class="fg"><label class="fl">Port</label><input class="fi" type="number" id="aport" min="1" max="65535" value="443">
-<small style="color:var(--text3); display:block; margin-top:4px;"
-       data-en="Allowed ports: 443, 2053, 2083, 2087, 2096, 8443 (Cloudflare). Container listens on fixed port."
-       data-fa="پورت‌های مجاز: ۴۴۳, ۲۰۵۳, ۲۰۸۳, ۲۰۸۷, ۲۰۹۶, ۸۴۴۳ (کلادفلر). پورت کانتینر ثابت می‌ماند.">
-  Allowed ports: 443, 2053, 2083, 2087, 2096, 8443 (Cloudflare). Container listens on fixed port.
-</small>
+        
+        <div class="fg">
+          <label class="fl">Port</label>
+          <input class="fi" type="number" id="aport" min="1" max="65535" value="443">
+          <small style="color:var(--text3); display:block; margin-top:4px;"
+                 data-en="Allowed ports: 443, 2053, 2083, 2087, 2096, 8443 (Cloudflare). Container listens on fixed port."
+                 data-fa="پورت‌های مجاز: ۴۴۳, ۲۰۵۳, ۲۰۸۳, ۲۰۸۷, ۲۰۹۶, ۸۴۴۳ (کلادفلر). پورت کانتینر ثابت می‌ماند.">
+            Allowed ports: 443, 2053, 2083, 2087, 2096, 8443 (Cloudflare). Container listens on fixed port.
+          </small>
         </div>
+      </div>
     </div>
-</div>
-    <div class="fg"><label class="fl" data-en="Traffic Limit (GB)" data-fa="محدودیت ترافیک (گیگابایت)">Traffic Limit (GB)</label><input class="fi" type="number" id="nv" min="0" step="0.1" value="0" placeholder="0 = Unlimited"></div>
-    <div class="fg"><label class="fl" data-en="Max Connections" data-fa="حداکثر اتصالات">Max Connections</label><input class="fi" type="number" id="nc" min="0" value="0" placeholder="0 = Unlimited"></div>
-    <div class="fg"><label class="fl" data-en="Validity (Days)" data-fa="اعتبار (روز)">Validity (Days)</label><input class="fi" type="number" id="nd" min="0" value="0" placeholder="0 = Unlimited"></div>
-    <div class="fg"><label class="fl" data-en="Color" data-fa="رنگ">Color</label><input type="color" id="alink-color" value="#39ff14"></div>
-    <div style="display:flex;gap:6px;margin-top:10px;"><button class="btn btn-primary" onclick="createLink()" style="flex:1;" data-en="Create" data-fa="ایجاد">Create</button><button class="btn btn-outline" onclick="document.getElementById('mo-add').classList.remove('show')" data-en="Cancel" data-fa="انصراف">Cancel</button></div>
+    
+    <div class="fg">
+      <label class="fl" data-en="Traffic Limit (GB)" data-fa="محدودیت ترافیک (گیگابایت)">Traffic Limit (GB)</label>
+      <input class="fi" type="number" id="nv" min="0" step="0.1" value="0" placeholder="0 = Unlimited">
+    </div>
+    
+    <div class="fg">
+      <label class="fl" data-en="Max Connections" data-fa="حداکثر اتصالات">Max Connections</label>
+      <input class="fi" type="number" id="nc" min="0" value="0" placeholder="0 = Unlimited">
+    </div>
+    
+    <div class="fg">
+      <label class="fl" data-en="Validity (Days)" data-fa="اعتبار (روز)">Validity (Days)</label>
+      <input class="fi" type="number" id="nd" min="0" value="0" placeholder="0 = Unlimited">
+    </div>
+    
+    <div class="fg">
+      <label class="fl" data-en="Color" data-fa="رنگ">Color</label>
+      <input type="color" id="alink-color" value="#39ff14">
+    </div>
+    
+    <div style="display:flex;gap:6px;margin-top:10px;">
+      <button class="btn btn-primary" onclick="createLink()" style="flex:1;" data-en="Create" data-fa="ایجاد">Create</button>
+      <button class="btn btn-outline" onclick="document.getElementById('mo-add').classList.remove('show')" data-en="Cancel" data-fa="انصراف">Cancel</button>
+    </div>
   </div>
 </div>
 
@@ -7517,10 +7569,21 @@ example.com
   <div class="mo-box">
     <button class="mo-close" onclick="document.getElementById('mo-edit').classList.remove('show')">✕</button>
     <div class="mo-title" id="et" data-en="Edit Inbound" data-fa="ویرایش اینباند">Edit Inbound</div>
+    
     <input type="hidden" id="eu">
-    <div class="fg"><label class="fl">UUID</label><input class="fi" id="euuid" readonly></div>
-    <div class="fg"><label class="fl" data-en="Name" data-fa="نام">Name</label><input class="fi" id="en2" maxlength="60"></div>
-    <div class="fg"><label class="fl" data-en="Flag / Country" data-fa="پرچم / کشور">Flag / Country</label>
+    
+    <div class="fg">
+      <label class="fl">UUID</label>
+      <input class="fi" id="euuid" readonly>
+    </div>
+    
+    <div class="fg">
+      <label class="fl" data-en="Name" data-fa="نام">Name</label>
+      <input class="fi" id="en2" maxlength="60">
+    </div>
+    
+    <div class="fg">
+      <label class="fl" data-en="Flag / Country" data-fa="پرچم / کشور">Flag / Country</label>
       <select class="fs" id="flag-select-edit" onchange="applyFlagEdit()">
         <option value="">None</option>
         <option value="cn">🇨🇳 China</option>
@@ -7541,34 +7604,53 @@ example.com
       <input type="hidden" id="flag-code-edit" value="">
       <button class="btn btn-outline btn-sm" onclick="autoDetectFlagEdit()" style="margin-top:4px;">🔍 Auto Detect</button>
     </div>
-    <div class="fg"><button class="adv-toggle" onclick="toggleAdv('adv-edit')">▼ <span data-en="Advanced Options" data-fa="گزینه‌های پیشرفته">Advanced Options</span></button>
+    
+    <div class="fg">
+      <button class="adv-toggle" onclick="toggleAdv('adv-edit')">▼ <span data-en="Advanced Options" data-fa="گزینه‌های پیشرفته">Advanced Options</span></button>
       <div id="adv-edit" class="adv-section">
-        <div class="fg"><label class="fl" data-en="Profile" data-fa="پروفایل">Profile</label>
-          <select class="fs" id="eres-profile" onchange="applyProfile()"><option value="">Custom</option><option value="default">Default</option><option value="youtube">YouTube</option><option value="instagram">Instagram</option><option value="twitter">Twitter</option><option value="tiktok">TikTok</option><option value="whatsapp">WhatsApp</option><option value="telegram">Telegram</option><option value="netflix">Netflix</option><option value="spotify">Spotify</option><option value="google">Google</option></select>
+        <div class="fg">
+          <label class="fl" data-en="Profile" data-fa="پروفایل">Profile</label>
+          <select class="fs" id="eres-profile" onchange="applyProfile()">
+            <option value="">Custom</option>
+            <option value="default">Default</option>
+            <option value="youtube">YouTube</option>
+            <option value="instagram">Instagram</option>
+            <option value="twitter">Twitter</option>
+            <option value="tiktok">TikTok</option>
+            <option value="whatsapp">WhatsApp</option>
+            <option value="telegram">Telegram</option>
+            <option value="netflix">Netflix</option>
+            <option value="spotify">Spotify</option>
+            <option value="google">Google</option>
+          </select>
           <small style="color:var(--text3);font-size:0.75rem;">App profiles only change SNI/Host for DPI bypass and do not affect server connection.</small>
         </div>
         <div class="fg"><label class="fl">Path</label><input class="fi" id="ep"></div>
         <div class="fg"><label class="fl">SNI</label><input class="fi" id="esni"></div>
         <div class="fg"><label class="fl">Host</label><input class="fi" id="ehost"></div>
-        <div class="fg"><label class="fl">Fingerprint</label>
+        
+        <div class="fg">
+          <label class="fl">Fingerprint</label>
           <select class="fs" id="efingerprint-sel" onchange="toggleFingerprintCustom('edit')">
-    <option value="none">None / Disable</option>
-    <option value="chrome">Chrome</option>
-    <option value="firefox">Firefox</option>
-    <option value="safari">Safari</option>
-    <option value="ios">iOS</option>
-    <option value="android">Android</option>
-    <option value="edge">Edge</option>
-    <option value="360">360</option>
-    <option value="qq">QQ</option>
-    <option value="random">Random</option>
-    <option value="randomized">Randomized</option>
-    <option value="custom">Custom</option>
-</select>
+            <option value="none">None / Disable</option>
+            <option value="chrome">Chrome</option>
+            <option value="firefox">Firefox</option>
+            <option value="safari">Safari</option>
+            <option value="ios">iOS</option>
+            <option value="android">Android</option>
+            <option value="edge">Edge</option>
+            <option value="360">360</option>
+            <option value="qq">QQ</option>
+            <option value="random">Random</option>
+            <option value="randomized">Randomized</option>
+            <option value="custom">Custom</option>
+          </select>
           <input class="fi" id="efingerprint-custom" placeholder="Enter custom fingerprint" style="display:none; margin-top:5px;">
           <input type="hidden" id="efingerprint" value="chrome">
         </div>
-        <div class="fg"><label class="fl">Fragment</label>
+        
+        <div class="fg">
+          <label class="fl">Fragment</label>
           <select class="fs" id="efrag-mode" onchange="toggleFragmentFields('edit')">
             <option value="off">Off</option>
             <option value="tlshello">TLS Hello</option>
@@ -7580,13 +7662,17 @@ example.com
           </div>
           <input type="hidden" id="efrag" value="">
         </div>
+        
         <div class="fg"><label class="fl">IP Profile</label><select class="fs" id="eip-profile"></select></div>
-        <div class="fg"><label class="fl" data-en="Naming Mode" data-fa="شیوه نام‌گذاری">Naming Mode</label>
+        
+        <div class="fg">
+          <label class="fl" data-en="Naming Mode" data-fa="شیوه نام‌گذاری">Naming Mode</label>
           <select class="fs" id="enaming-mode">
             <option value="default">Default (SulgX-Name-Server1)</option>
             <option value="short">Short (SXP 1, SXP 2, ...)</option>
           </select>
         </div>
+        
         <div class="fg"><label class="fl">TCP Fast Open</label><div class="toggle" id="tfo-edit" onclick="this.classList.toggle('on')"></div></div>
         <div class="fg"><label class="fl">ECH (Secure Hello)</label><div class="toggle" id="ech-edit" onclick="this.classList.toggle('on'); toggleEchFields('edit')"></div></div>
         <div id="ech-edit-fields" style="display:none;">
@@ -7597,7 +7683,9 @@ example.com
         <div class="fg"><label class="fl">Random Path</label><div class="toggle" id="random-edit" onclick="this.classList.toggle('on')"></div></div>
         <div class="fg"><label class="fl">SMUX</label><div class="toggle" id="smux-edit" onclick="this.classList.toggle('on')"></div></div>
         <div class="fg"><label class="fl">IP Limit</label><input class="fi" type="number" id="eip-limit" min="0" value="0" placeholder="0 = Unlimited"></div>
-        <div class="fg"><label class="fl">Protocol</label>
+        
+        <div class="fg">
+          <label class="fl">Protocol</label>
           <select class="fs" id="eprotocol">
             <option value="vless-ws">VLESS + WS</option>
             <option value="xhttp-packet-up">XHTTP Packet-Up</option>
@@ -7606,32 +7694,58 @@ example.com
             <option value="xhttp-auto">XHTTP Auto</option>
           </select>
         </div>
-        <div class="fg"><label class="fl">ALPN</label>
+        
+        <div class="fg">
+          <label class="fl">ALPN</label>
           <select class="fs" id="ealpn-sel" onchange="toggleAlpnCustom('edit')">
-    <option value="">None (default)</option>
-    <option value="http/1.1">http/1.1</option>
-    <option value="h2,http/1.1">h2,http/1.1</option>
-    <option value="h2">h2</option>
-    <option value="h3">h3</option>
-    <option value="custom">Custom</option>
-</select>
+            <option value="">None (default)</option>
+            <option value="http/1.1">http/1.1</option>
+            <option value="h2,http/1.1">h2,http/1.1</option>
+            <option value="h2">h2</option>
+            <option value="h3">h3</option>
+            <option value="custom">Custom</option>
+          </select>
           <input class="fi" id="ealpn-custom" placeholder="e.g. h2,http/1.1" style="display:none; margin-top:5px;">
           <input type="hidden" id="ealpn" value="http/1.1">
         </div>
-        <div class="fg"><label class="fl">Port</label><input class="fi" type="number" id="aport" min="1" max="65535" value="443">
-<small style="color:var(--text3); display:block; margin-top:4px;"
-       data-en="Allowed ports: 443, 2053, 2083, 2087, 2096, 8443 (Cloudflare). Container listens on fixed port."
-       data-fa="پورت‌های مجاز: ۴۴۳, ۲۰۵۳, ۲۰۸۳, ۲۰۸۷, ۲۰۹۶, ۸۴۴۳ (کلادفلر). پورت کانتینر ثابت می‌ماند.">
-  Allowed ports: 443, 2053, 2083, 2087, 2096, 8443 (Cloudflare). Container listens on fixed port.
-</small>
+        
+        <div class="fg">
+          <label class="fl">Port</label>
+          <input class="fi" type="number" id="eport" min="1" max="65535" value="443">
+          <small style="color:var(--text3); display:block; margin-top:4px;"
+                 data-en="Allowed ports: 443, 2053, 2083, 2087, 2096, 8443 (Cloudflare). Container listens on fixed port."
+                 data-fa="پورت‌های مجاز: ۴۴۳, ۲۰۵۳, ۲۰۸۳, ۲۰۸۷, ۲۰۹۶, ۸۴۴۳ (کلادفلر). پورت کانتینر ثابت می‌ماند.">
+            Allowed ports: 443, 2053, 2083, 2087, 2096, 8443 (Cloudflare). Container listens on fixed port.
+          </small>
         </div>
+      </div>
     </div>
-</div>
-    <div class="fg"><label class="fl" data-en="Traffic Limit (GB)" data-fa="محدودیت ترافیک (گیگابایت)">Traffic Limit (GB)</label><input class="fi" type="number" id="el" min="0" step="0.1" placeholder="0 = Unlimited"></div>
-    <div class="fg"><label class="fl" data-en="Max Connections" data-fa="حداکثر اتصالات">Max Connections</label><input class="fi" type="number" id="ec" min="0" placeholder="0 = Unlimited"></div>
-    <div class="fg"><label class="fl" data-en="Validity (Days)" data-fa="اعتبار (روز)">Validity (Days)</label><input class="fi" type="number" id="ed" min="0" placeholder="0 = Unlimited"></div>
-    <div class="fg"><label class="fl" data-en="Color" data-fa="رنگ">Color</label><input type="color" id="e-color" value="#39ff14"></div>
-    <div style="display:flex;gap:6px;margin-top:10px;"><button class="btn btn-primary" onclick="saveEdit()" style="flex:1;" data-en="Save" data-fa="ذخیره">Save</button><button class="btn btn-danger btn-sm" onclick="resetTraf()" data-en="Reset Traffic" data-fa="بازنشانی ترافیک">Reset Traffic</button><button class="btn btn-outline" onclick="document.getElementById('mo-edit').classList.remove('show')" data-en="Cancel" data-fa="انصراف">Cancel</button></div>
+    
+    <div class="fg">
+      <label class="fl" data-en="Traffic Limit (GB)" data-fa="محدودیت ترافیک (گیگابایت)">Traffic Limit (GB)</label>
+      <input class="fi" type="number" id="el" min="0" step="0.1" placeholder="0 = Unlimited">
+    </div>
+    
+    <div class="fg">
+      <label class="fl" data-en="Max Connections" data-fa="حداکثر اتصالات">Max Connections</label>
+      <input class="fi" type="number" id="ec" min="0" placeholder="0 = Unlimited">
+    </div>
+    
+    <div class="fg">
+      <label class="fl" data-en="Validity (Days)" data-fa="اعتبار (روز)">Validity (Days)</label>
+      <input class="fi" type="number" id="ed" min="0" placeholder="0 = Unlimited">
+    </div>
+    
+    <div class="fg">
+      <label class="fl" data-en="Color" data-fa="رنگ">Color</label>
+      <input type="color" id="e-color" value="#39ff14">
+    </div>
+    
+    <div style="display:flex;gap:6px;margin-top:10px;">
+      <button class="btn btn-primary" onclick="saveEdit()" style="flex:1;" data-en="Save" data-fa="ذخیره">Save</button>
+      <button class="btn btn-danger btn-sm" onclick="resetTraf()" data-en="Reset Traffic" data-fa="بازنشانی ترافیک">Reset Traffic</button>
+      <button class="btn btn-outline" onclick="document.getElementById('mo-edit').classList.remove('show')" data-en="Cancel" data-fa="انصراف">Cancel</button>
+    </div>
   </div>
 </div>
 
@@ -7648,7 +7762,10 @@ example.com
   <div class="mo-box">
     <button class="mo-close" onclick="document.getElementById('mo-addr-edit').classList.remove('show')">✕</button>
     <div class="mo-title" data-en="Edit Address" data-fa="ویرایش آدرس">Edit Address</div>
-    <div class="fg"><label class="fl" data-en="New Address" data-fa="آدرس جدید">New Address</label><input class="fi" id="edit-addr-input"></div>
+    <div class="fg">
+      <label class="fl" data-en="New Address" data-fa="آدرس جدید">New Address</label>
+      <input class="fi" id="edit-addr-input">
+    </div>
     <button class="btn btn-primary" onclick="saveAddrEdit()" style="width:100%;justify-content:center;margin-top:10px;" data-en="Save" data-fa="ذخیره">Save</button>
   </div>
 </div>
@@ -8454,170 +8571,265 @@ async function createLink(){
   };
   try{await authenticatedFetch('/api/links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});toast('Created');$m('mo-add').classList.remove('show');loadLinks();loadStats();}catch{toast('Error',true);}
 }
-function showEditMo(uid){
-  const l=allLinks.find(x=>x.uuid===uid); if(!l)return;
-  $m('eu').value=uid; $m('euuid').value=l.uuid; $m('en2').value=l.label;
-  $m('el').value=l.limit_bytes>0?(l.limit_bytes/1073741824):''; $m('ec').value=l.max_connections||''; $m('ed').value='';
-  $m('ep').value=l.custom_path||''; $m('esni').value=l.custom_sni||''; $m('ehost').value=l.custom_host||'';
-  $m('e-color').value=l.color||'#39ff14';
-  const flag = l.flag || '';
-  $m('flag-code-edit').value = flag;
-  const sel = $m('flag-select-edit');
-  if (flag && ['cn','nl','ru','us','ca','ir','de','gb','it','fr','tr','ae'].includes(flag)) {
-    sel.value = flag;
-    $m('flag-custom-edit').style.display = 'none';
-  } else if (flag) {
-    sel.value = 'custom';
-    $m('flag-custom-edit').style.display = 'block';
-    $m('flag-custom-edit').value = flag;
-  } else {
-    sel.value = '';
-    $m('flag-custom-edit').style.display = 'none';
-  }
-  if(l.tfo) $m('tfo-edit').classList.add('on'); else $m('tfo-edit').classList.remove('on');
-  if(l.ech_enabled){
-    $m('ech-edit').classList.add('on');
-    $m('ech-edit-fields').style.display='block';
-    $m('ech-sni-edit').value=l.ech_sni||'';
-    $m('ech-doh-edit').value=l.ech_doh||'';
-  } else {
-    $m('ech-edit').classList.remove('on');
-    $m('ech-edit-fields').style.display='none';
-  }
-  if(l.allow_insecure) $m('insecure-edit').classList.add('on'); else $m('insecure-edit').classList.remove('on');
-  if(l.random_path) $m('random-edit').classList.add('on'); else $m('random-edit').classList.remove('on');
-  if(l.smux_enabled) $m('smux-edit').classList.add('on'); else $m('smux-edit').classList.remove('on');
-  $m('eip-limit').value = l.ip_limit || 0;
-  $m('eprotocol').value = l.protocol || 'vless-ws';
-  // fingerprint
-  const currentFp = l.fingerprint || 'chrome';
-  const fpSel = $m('efingerprint-sel');
-  const fpCustom = $m('efingerprint-custom');
-  const fpHidden = $m('efingerprint');
-  if (!currentFp || currentFp.toLowerCase() === 'none') {
-      fpSel.value = 'none';
-      fpCustom.style.display = 'none';
-      fpHidden.value = '';   // send empty to backend (will become None)
-  } else if (['chrome','firefox','safari','ios','android','edge','360','qq','random','randomized'].includes(currentFp)) {
-      fpSel.value = currentFp;
-      fpCustom.style.display = 'none';
-      fpHidden.value = currentFp;
-  } else {
-      fpSel.value = 'custom';
-      fpCustom.style.display = 'block';
-      fpCustom.value = currentFp;
-      fpHidden.value = currentFp;
-  }
+function showEditMo(uid) {
+    const l = allLinks.find(x => x.uuid === uid);
+    if (!l) return;
 
-  // ALPN
-  const currentAlpn = l.alpn || '';   // empty string means none
-  const alpnSel = $m('ealpn-sel');
-  const alpnCustom = $m('ealpn-custom');
-  const alpnHidden = $m('ealpn');
-  if (!currentAlpn) {
-      alpnSel.value = '';   // select "None (default)"
-      alpnCustom.style.display = 'none';
-      alpnHidden.value = '';
-  } else if (['http/1.1','h2,http/1.1','h2'].includes(currentAlpn)) {
-      alpnSel.value = currentAlpn;
-      alpnCustom.style.display = 'none';
-      alpnHidden.value = currentAlpn;
-  } else {
-      alpnSel.value = 'custom';
-      alpnCustom.style.display = 'block';
-      alpnCustom.value = currentAlpn;
-      alpnHidden.value = currentAlpn;
-  }
+    $m('eu').value = uid;
+    $m('euuid').value = l.uuid;
+    $m('en2').value = l.label;
+    $m('el').value = l.limit_bytes > 0 ? (l.limit_bytes / 1073741824) : '';
+    $m('ec').value = l.max_connections || '';
+    $m('ed').value = '';
+    $m('ep').value = l.custom_path || '';
+    $m('esni').value = l.custom_sni || '';
+    $m('ehost').value = l.custom_host || '';
+    $m('e-color').value = l.color || '#39ff14';
 
-  $m('eport').value = l.port || 443;
-  const fragMode = l.fragment_mode||'off';
-  $m('efrag-mode').value = fragMode;
-  if(fragMode==='range'){
-    $m('frag-edit-range').style.display='block';
-    $m('efrag-length').value = l.fragment_length||'100-200';
-    $m('efrag-interval').value = l.fragment_interval||'10-20';
-  } else {
-    $m('frag-edit-range').style.display='none';
-  }
-  $m('efrag').value = l.fragment||'';
-  loadIpProfilesForSelectEdit(l.ip_profile_id || '');
-  $m('enaming-mode').value = l.naming_mode || 'default';
-  $m('et').textContent=(lang==='fa'?'ویرایش: ':'EDIT: ')+l.label; $m('mo-edit').classList.add('show');
-}
-async function saveEdit(){
-  const uid=$m('eu').value,v=parseFloat($m('el').value)||0,mc=parseInt($m('ec').value)||0,days=parseInt($m('ed').value)||0;
-  const flagCode=$m('flag-code-edit').value||'';
-  const ipProfileId=$m('eip-profile')?.value||'';
-  const namingMode=$m('enaming-mode')?.value||'default';
-  const tfo=$m('tfo-edit').classList.contains('on');
-  const echEnabled=$m('ech-edit').classList.contains('on');
-  const echSni=echEnabled?($m('ech-sni-edit').value.trim()||''):'';
-  const echDoh=echEnabled?($m('ech-doh-edit').value.trim()||''):'';
-  const allowInsecure=$m('insecure-edit').classList.contains('on');
-  const randomPath=$m('random-edit').classList.contains('on');
-  const smuxEnabled=$m('smux-edit').classList.contains('on');
-  const ipLimit=parseInt($m('eip-limit').value)||0;
-  const protocol=$m('eprotocol').value||'vless-ws';
-  const fingerprint=$m('efingerprint').value||'chrome';
-  const alpn=$m('ealpn').value.trim()||'';
-  const port=parseInt($m('eport').value)||443;
-  const fragMode=$m('efrag-mode').value;
-  let fragment='';
-  if(fragMode==='tlshello') fragment='tlshello';
-  else if(fragMode==='range'){
-    const length=$m('efrag-length').value.trim()||'100-200';
-    fragment=length;
-  }
-  const body={
-    limit_value:v,limit_unit:'GB',max_connections:mc,label:$m('en2').value.trim(),
-    custom_path:$m('ep').value.trim(),custom_sni:$m('esni').value.trim(),
-    custom_host:$m('ehost').value.trim(),custom_fp:fingerprint,
-    color:$m('e-color').value,flag:flagCode,
-    fragment:fragment,ip_profile_id:ipProfileId,naming_mode:namingMode,
-    tfo:tfo,ech_enabled:echEnabled,ech_sni:echSni,ech_doh:echDoh,
-    fragment_mode:fragMode,fragment_length:$m('efrag-length').value.trim()||'100-200',
-    fragment_interval:$m('efrag-interval').value.trim()||'10-20',
-    allow_insecure:allowInsecure,random_path:randomPath,
-    smux_enabled:smuxEnabled,ip_limit:ipLimit,
-    protocol:protocol,fingerprint:fingerprint,alpn:alpn,port:port
-  };
-  if(days)body.days_valid=days;
-
-  try {
-    const r = await authenticatedFetch('/api/links/'+uid, {
-      method:'PATCH',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify(body)
-    });
-    const data = await r.json();
-    if (!r.ok) {
-      toast(data.detail || 'Error', true);
-      return;
+    const flag = l.flag || '';
+    $m('flag-code-edit').value = flag;
+    const sel = $m('flag-select-edit');
+    if (flag && ['cn', 'nl', 'ru', 'us', 'ca', 'ir', 'de', 'gb', 'it', 'fr', 'tr', 'ae'].includes(flag)) {
+        sel.value = flag;
+        $m('flag-custom-edit').style.display = 'none';
+    } else if (flag) {
+        sel.value = 'custom';
+        $m('flag-custom-edit').style.display = 'block';
+        $m('flag-custom-edit').value = flag;
+    } else {
+        sel.value = '';
+        $m('flag-custom-edit').style.display = 'none';
     }
-    if (data.message === 'no changes') {
-      toast('No changes detected', true);
-      return;
+
+    if (l.tfo) $m('tfo-edit').classList.add('on');
+    else $m('tfo-edit').classList.remove('on');
+
+    if (l.ech_enabled) {
+        $m('ech-edit').classList.add('on');
+        $m('ech-edit-fields').style.display = 'block';
+        $m('ech-sni-edit').value = l.ech_sni || '';
+        $m('ech-doh-edit').value = l.ech_doh || '';
+    } else {
+        $m('ech-edit').classList.remove('on');
+        $m('ech-edit-fields').style.display = 'none';
     }
-    toast('Updated');
-    $m('mo-edit').classList.remove('show');
-    loadLinks();
-  } catch(e) {
-    toast('Error: ' + (e.message || 'Network error'), true);
-  }
+
+    if (l.allow_insecure) $m('insecure-edit').classList.add('on');
+    else $m('insecure-edit').classList.remove('on');
+
+    if (l.random_path) $m('random-edit').classList.add('on');
+    else $m('random-edit').classList.remove('on');
+
+    if (l.smux_enabled) $m('smux-edit').classList.add('on');
+    else $m('smux-edit').classList.remove('on');
+
+    $m('eip-limit').value = l.ip_limit || 0;
+    $m('eprotocol').value = l.protocol || 'vless-ws';
+
+    // Fingerprint
+    const currentFp = l.fingerprint || 'chrome';
+    const fpSel = $m('efingerprint-sel');
+    const fpCustom = $m('efingerprint-custom');
+    const fpHidden = $m('efingerprint');
+    if (!currentFp || currentFp.toLowerCase() === 'none') {
+        fpSel.value = 'none';
+        fpCustom.style.display = 'none';
+        fpHidden.value = '';   // send empty to backend (will become None)
+    } else if (['chrome', 'firefox', 'safari', 'ios', 'android', 'edge', '360', 'qq', 'random', 'randomized'].includes(currentFp)) {
+        fpSel.value = currentFp;
+        fpCustom.style.display = 'none';
+        fpHidden.value = currentFp;
+    } else {
+        fpSel.value = 'custom';
+        fpCustom.style.display = 'block';
+        fpCustom.value = currentFp;
+        fpHidden.value = currentFp;
+    }
+
+    // ALPN
+    const currentAlpn = l.alpn || '';   // empty string means none
+    const alpnSel = $m('ealpn-sel');
+    const alpnCustom = $m('ealpn-custom');
+    const alpnHidden = $m('ealpn');
+    if (!currentAlpn) {
+        alpnSel.value = '';   // select "None (default)"
+        alpnCustom.style.display = 'none';
+        alpnHidden.value = '';
+    } else if (['http/1.1', 'h2,http/1.1', 'h2', 'h3'].includes(currentAlpn)) {
+    alpnSel.value = currentAlpn;
+    alpnCustom.style.display = 'none';
+    alpnHidden.value = currentAlpn;
+    } else {
+        alpnSel.value = 'custom';
+        alpnCustom.style.display = 'block';
+        alpnCustom.value = currentAlpn;
+        alpnHidden.value = currentAlpn;
+    }
+
+    $m('eport').value = l.port || 443;
+    const fragMode = l.fragment_mode || 'off';
+    $m('efrag-mode').value = fragMode;
+    if (fragMode === 'range') {
+        $m('frag-edit-range').style.display = 'block';
+        $m('efrag-length').value = l.fragment_length || '100-200';
+        $m('efrag-interval').value = l.fragment_interval || '10-20';
+    } else {
+        $m('frag-edit-range').style.display = 'none';
+    }
+    $m('efrag').value = l.fragment || '';
+
+    loadIpProfilesForSelectEdit(l.ip_profile_id || '');
+    $m('enaming-mode').value = l.naming_mode || 'default';
+    $m('et').textContent = (lang === 'fa' ? 'ویرایش: ' : 'EDIT: ') + l.label;
+    $m('mo-edit').classList.add('show');
 }
-async function resetTraf(){const uid=$m('eu').value;if(!confirm('Reset?'))return;try{await authenticatedFetch('/api/links/'+uid,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({reset_usage:true})});toast('Reset');loadLinks();}catch{toast('Error',true);}}
-async function delLink(uid){if(!confirm('Delete?'))return;try{const r=await authenticatedFetch('/api/links/'+uid,{method:'DELETE'});if(!r.ok){const d=await r.json();toast(d.detail||'Error',true);}else{toast('Deleted');loadLinks();loadStats();}}catch{toast('Error',true);}}
-function cpLink(txt){copyToClipboard(txt);}
-async function cpSub(uid){
+
+async function saveEdit() {
+    const uid = $m('eu').value;
+    const v = parseFloat($m('el').value) || 0;
+    const mc = parseInt($m('ec').value) || 0;
+    const days = parseInt($m('ed').value) || 0;
+    const flagCode = $m('flag-code-edit').value || '';
+    const ipProfileId = $m('eip-profile')?.value || '';
+    const namingMode = $m('enaming-mode')?.value || 'default';
+    const tfo = $m('tfo-edit').classList.contains('on');
+    const echEnabled = $m('ech-edit').classList.contains('on');
+    const echSni = echEnabled ? ($m('ech-sni-edit').value.trim() || '') : '';
+    const echDoh = echEnabled ? ($m('ech-doh-edit').value.trim() || '') : '';
+    const allowInsecure = $m('insecure-edit').classList.contains('on');
+    const randomPath = $m('random-edit').classList.contains('on');
+    const smuxEnabled = $m('smux-edit').classList.contains('on');
+    const ipLimit = parseInt($m('eip-limit').value) || 0;
+    const protocol = $m('eprotocol').value || 'vless-ws';
+    const fingerprint = $m('efingerprint').value || 'chrome';
+    const alpn = $m('ealpn').value.trim() || '';
+    const port = parseInt($m('eport').value) || 443;
+    const fragMode = $m('efrag-mode').value;
+    let fragment = '';
+    if (fragMode === 'tlshello') {
+        fragment = 'tlshello';
+    } else if (fragMode === 'range') {
+        const length = $m('efrag-length').value.trim() || '100-200';
+        fragment = length;
+    }
+
+    const body = {
+        limit_value: v,
+        limit_unit: 'GB',
+        max_connections: mc,
+        label: $m('en2').value.trim(),
+        custom_path: $m('ep').value.trim(),
+        custom_sni: $m('esni').value.trim(),
+        custom_host: $m('ehost').value.trim(),
+        custom_fp: fingerprint,
+        color: $m('e-color').value,
+        flag: flagCode,
+        fragment: fragment,
+        ip_profile_id: ipProfileId,
+        naming_mode: namingMode,
+        tfo: tfo,
+        ech_enabled: echEnabled,
+        ech_sni: echSni,
+        ech_doh: echDoh,
+        fragment_mode: fragMode,
+        fragment_length: $m('efrag-length').value.trim() || '100-200',
+        fragment_interval: $m('efrag-interval').value.trim() || '10-20',
+        allow_insecure: allowInsecure,
+        random_path: randomPath,
+        smux_enabled: smuxEnabled,
+        ip_limit: ipLimit,
+        protocol: protocol,
+        fingerprint: fingerprint,
+        alpn: alpn,
+        port: port
+    };
+    if (days) body.days_valid = days;
+
+    try {
+        const r = await authenticatedFetch('/api/links/' + uid, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await r.json();
+        if (!r.ok) {
+            toast(data.detail || 'Error', true);
+            return;
+        }
+        if (data.message === 'no changes') {
+            toast('No changes detected', true);
+            return;
+        }
+        toast('Updated');
+        $m('mo-edit').classList.remove('show');
+        loadLinks();
+    } catch (e) {
+        toast('Error: ' + (e.message || 'Network error'), true);
+    }
+}
+
+async function resetTraf() {
+    const uid = $m('eu').value;
+    if (!confirm('Reset?')) return;
+    try {
+        await authenticatedFetch('/api/links/' + uid, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reset_usage: true })
+        });
+        toast('Reset');
+        loadLinks();
+    } catch {
+        toast('Error', true);
+    }
+}
+
+async function delLink(uid) {
+    if (!confirm('Delete?')) return;
+    try {
+        const r = await authenticatedFetch('/api/links/' + uid, { method: 'DELETE' });
+        if (!r.ok) {
+            const d = await r.json();
+            toast(d.detail || 'Error', true);
+        } else {
+            toast('Deleted');
+            loadLinks();
+            loadStats();
+        }
+    } catch {
+        toast('Error', true);
+    }
+}
+
+function cpLink(txt) {
+    copyToClipboard(txt);
+}
+
+async function cpSub(uid) {
     const prefix = window.panelPrefix ? '/' + window.panelPrefix : '';
     copyToClipboard('https://' + location.host + prefix + '/user/' + uid);
 }
-function showQR(txt){if(txt.length>2000){toast('Link too long for QR',true);return;}const img=$m('qr-img');img.src='https://api.qrserver.com/v1/create-qr-code/?size=280x280&data='+encodeURIComponent(txt);$m('mo-qr').classList.add('show');}
-function dlQR(){const a=document.createElement('a');a.href=$m('qr-img').src;a.download='sulgx-qr.png';a.click();}
+
+function showQR(txt) {
+    if (txt.length > 2000) {
+        toast('Link too long for QR', true);
+        return;
+    }
+    const img = $m('qr-img');
+    img.src = 'https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=' + encodeURIComponent(txt);
+    $m('mo-qr').classList.add('show');
+}
+
+function dlQR() {
+    const a = document.createElement('a');
+    a.href = $m('qr-img').src;
+    a.download = 'sulgx-qr.png';
+    a.click();
+}
 
 function updateSpeedDisplaySafe(id, bps) {
-  const el = $m(id);
-  if (el) el.innerHTML = formatSpeed(bps);
+    const el = $m(id);
+    if (el) el.innerHTML = formatSpeed(bps);
 }
 async function loadStats(){
   if (!isAuthenticated) return; 
@@ -9706,37 +9918,45 @@ async function loadGeneralSettings() {
         
         const d = await r.json();
         
-        $m('set-footer').value = d.footer_text || '';
-        $m('set-default-path').value = d.default_path || '';
+        // Helper to safely set input value
+        const setInput = (id, value) => {
+            const el = $m(id);
+            if (el) el.value = value;
+        };
+        
+        setInput('set-footer', d.footer_text || '');
+        setInput('set-default-path', d.default_path || '');
         timezoneOffset = parseFloat(d.timezone_offset) || 0;
-        $m('set-default-limit').value = d.default_limit_bytes ? (parseInt(d.default_limit_bytes) / 1073741824).toFixed(1) : '';
-        $m('set-default-expiry').value = d.default_expiry_days || '';
-        $m('set-default-maxconn').value = d.default_max_connections || '';
-        $m('set-scanner-timeout').value = d.scanner_timeout || '4';
-        $m('set-monthly-limit').value = d.monthly_limit_gb || '';
-        $m('set-max-scan-ips').value = d.max_scan_ips || '256';
-        $m('set-keep-alive-interval').value = d.keep_alive_interval || '300';
+        setInput('set-default-limit', d.default_limit_bytes ? (parseInt(d.default_limit_bytes) / 1073741824).toFixed(1) : '');
+        setInput('set-default-expiry', d.default_expiry_days || '');
+        setInput('set-default-maxconn', d.default_max_connections || '');
+        setInput('set-scanner-timeout', d.scanner_timeout || '4');
+        setInput('set-monthly-limit', d.monthly_limit_gb || '');
+        setInput('set-max-scan-ips', d.max_scan_ips || '256');
+        setInput('set-keep-alive-interval', d.keep_alive_interval || '300');
         
         updateSettingsStatus(d);
         updateDashboardStatusCards(d);
         
         if (d.keep_alive_mode) {
             setKeepAliveMode(d.keep_alive_mode);
-            $m('set-keepalive-enabled').value = d.keep_alive_enabled === '1' ? '1' : '0';
+            setInput('set-keepalive-enabled', d.keep_alive_enabled === '1' ? '1' : '0');
             const card = $m('card-keepalive');
-            if (d.keep_alive_enabled === '1') { 
-                card.classList.add('active'); 
-                card.classList.remove('inactive'); 
-            } else { 
-                card.classList.add('inactive'); 
-                card.classList.remove('active'); 
+            if (card) {
+                if (d.keep_alive_enabled === '1') {
+                    card.classList.add('active');
+                    card.classList.remove('inactive');
+                } else {
+                    card.classList.add('inactive');
+                    card.classList.remove('active');
+                }
             }
         }
         
-        $m('set-landing-redirect').value = d.landing_redirect || '';
-        $m('set-camouflage-url').value = d.camouflage_url || '';
-        $m('set-sub-filename').value = d.sub_filename || '';
-        $m('set-panel-prefix').value = d.panel_prefix || '';
+        setInput('set-landing-redirect', d.landing_redirect || '');
+        setInput('set-camouflage-url', d.camouflage_url || '');
+        setInput('set-sub-filename', d.sub_filename || '');
+        setInput('set-panel-prefix', d.panel_prefix || '');
         
         const newPrefix = d.panel_prefix || '';
         if (window.panelPrefix !== newPrefix) {
@@ -9752,26 +9972,26 @@ async function loadGeneralSettings() {
         
         if (d.stealth_mode === '1') {
             const stealthCard = $m('card-stealth');
-            if (stealthCard) { 
-                stealthCard.classList.add('active'); 
-                stealthCard.classList.remove('inactive'); 
+            if (stealthCard) {
+                stealthCard.classList.add('active');
+                stealthCard.classList.remove('inactive');
             }
-            $m('set-stealth-mode').value = '1';
+            setInput('set-stealth-mode', '1');
             stealthMode = true;
             
-            const scannerPage = $m('page-ipscanner'); 
+            const scannerPage = $m('page-ipscanner');
             if (scannerPage) scannerPage.style.display = 'none';
-            const navScanner = document.querySelector('.nav-link[data-page="ipscanner"]'); 
+            const navScanner = document.querySelector('.nav-link[data-page="ipscanner"]');
             if (navScanner) navScanner.style.display = 'none';
-            const mobileNavScanner = document.querySelector('.mobile-nav .nav-item[data-page="ipscanner"]'); 
+            const mobileNavScanner = document.querySelector('.mobile-nav .nav-item[data-page="ipscanner"]');
             if (mobileNavScanner) mobileNavScanner.style.display = 'none';
         } else {
             stealthMode = false;
-            const scannerPage = $m('page-ipscanner'); 
+            const scannerPage = $m('page-ipscanner');
             if (scannerPage) scannerPage.style.display = '';
-            const navScanner = document.querySelector('.nav-link[data-page="ipscanner"]'); 
+            const navScanner = document.querySelector('.nav-link[data-page="ipscanner"]');
             if (navScanner) navScanner.style.display = '';
-            const mobileNavScanner = document.querySelector('.mobile-nav .nav-item[data-page="ipscanner"]'); 
+            const mobileNavScanner = document.querySelector('.mobile-nav .nav-item[data-page="ipscanner"]');
             if (mobileNavScanner) mobileNavScanner.style.display = '';
         }
 
@@ -9779,50 +9999,17 @@ async function loadGeneralSettings() {
             setPanelTZ(3.5, 'Tehran');
         } else if (timezoneOffset === 0) {
             setPanelTZ(0, 'UTC');
-        } else { 
-            toggleCustomTZInput(true); 
-            $m('custom-tz-value').value = timezoneOffset; 
+        } else {
+            toggleCustomTZInput(true);
+            setInput('custom-tz-value', timezoneOffset);
         }
         
-        const savedTheme = d.theme_color || 'dark'; 
+        const savedTheme = d.theme_color || 'dark';
         setPanelTheme(savedTheme);
-
-        authenticatedFetch('/api/warp/status?_=' + Date.now())
-            .then(async r => {
-                if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                return r.json();
-            })
-            .then(data => {
-                const card = document.getElementById('card-warp');
-                const input = document.getElementById('set-warp-enabled');
-                if (data && data.enabled) {
-                    card.classList.add('active');
-                    card.classList.remove('inactive');
-                    input.value = '1';
-                } else {
-                    card.classList.remove('active');
-                    card.classList.add('inactive');
-                    input.value = '0';
-                }
-                updateWarpIndicator(data);
-            })
-            .catch(err => {
-                console.error('Failed to fetch WARP status:', err);
-                const card = document.getElementById('card-warp');
-                const input = document.getElementById('set-warp-enabled');
-                if (card) { 
-                    card.classList.remove('active'); 
-                    card.classList.add('inactive'); 
-                }
-                if (input) input.value = '0';
-                updateWarpIndicator(null);
-            });
-
-    } catch (e) { 
-        console.error('General Settings Load Error:', e); 
+    } catch (e) {
+        console.error('General Settings Load Error:', e);
     }
 }
-
 async function saveGeneralSettings() {
     const footer = $m('set-footer').value.trim();
     const defPath = $m('set-default-path').value.trim();
@@ -9852,41 +10039,6 @@ async function saveGeneralSettings() {
     const panelPrefixVal = $m('set-panel-prefix').value.trim();
 
     await saveDohUpstreams();
-
-    const warpEnabled = document.getElementById('set-warp-enabled').value === '1';
-    
-    try {
-        const warpRes = await authenticatedFetch('/api/warp/toggle', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ enabled: warpEnabled })
-        });
-        const warpData = await warpRes.json().catch(() => null);
-
-        if (!warpRes.ok || !warpData || warpData.saved_to_disk === false) {
-            let errMsg = (lang === 'fa')
-                ? 'خطا در اعمال تنظیمات WARP.'
-                : 'Failed to apply WARP settings.';
-            if (warpData && warpData.saved_to_disk === false) {
-                errMsg = (lang === 'fa')
-                    ? 'خطا: سیستم‌فایل فقط‌خواندنی است. تنظیمات وارپ ذخیره نشد (محدودیت PaaS).'
-                    : 'Error: Read-only filesystem. WARP settings could not be saved (PaaS limitation).';
-            }
-            console.error('WARP Toggle Failed:', warpRes.status, warpData);
-            toast(errMsg, true);
-            return;
-        }
-
-        console.log('WARP Toggle Success:', warpData);
-        if (typeof updateWarpIndicator === 'function') {
-            updateWarpIndicator({ enabled: warpData.enabled, connected: false });
-        }
-    } catch (warpErr) {
-        console.error('WARP Toggle Request Failed:', warpErr);
-        toast('Network error toggling WARP', true);
-        return;
-    }
-
     try {
         const settingsRes = await authenticatedFetch('/api/settings', {
             method: 'POST',
@@ -9909,12 +10061,6 @@ async function saveGeneralSettings() {
 
         timezoneOffset = parseFloat(tz) || 0;
         toast('Saved & Applied');
-        
-        authenticatedFetch('/api/warp/status?_=' + Date.now())
-            .then(r => r.json())
-            .then(data => updateWarpIndicator(data))
-            .catch(() => {});
-        
         if (panelPrefixVal !== (window.panelPrefix || '')) {
             setTimeout(() => {
                 const newPrefix = panelPrefixVal ? '/' + panelPrefixVal : '';
@@ -9924,31 +10070,6 @@ async function saveGeneralSettings() {
     } catch (e) { 
         console.error('General Settings Save Error:', e);
         toast('Error saving settings', true); 
-    }
-}
-
-function updateWarpIndicator(data) {
-    const indicator = document.getElementById('warp-indicator');
-    if (!indicator) return;
-
-    if (data && data.connected) {
-        indicator.textContent = (lang === 'fa' ? '🟢 وارپ فعال' : '🟢 WARP Active');
-        indicator.style.background = 'rgba(74,222,128,0.15)';
-        indicator.style.color = '#4ade80';
-        indicator.style.border = '1px solid rgba(74,222,128,0.4)';
-    } else if (data && data.enabled) {
-        indicator.textContent = (lang === 'fa' ? '🟡 وارپ روشن (بدون اتصال)' : '🟡 WARP Enabled (not connected)');
-        indicator.style.background = 'rgba(251,191,36,0.15)';
-        indicator.style.color = '#fbbf24';
-        indicator.style.border = '1px solid rgba(251,191,36,0.4)';
-        if (data.debug_info && data.debug_info !== 'OK') {
-            console.warn('WARP connection issue: ' + data.debug_info);
-        }
-    } else {
-        indicator.textContent = (lang === 'fa' ? '⚫ وارپ خاموش' : '⚫ WARP Off');
-        indicator.style.background = 'rgba(113,113,122,0.15)';
-        indicator.style.color = '#71717a';
-        indicator.style.border = '1px solid rgba(113,113,122,0.4)';
     }
 }
 
@@ -10107,76 +10228,6 @@ async function saveBlockedDomains() {
 </script>
 </body>
 </html>"""
-
-# ------------------ WARP Management ------------------
-WARP_STATE_FILE = "/data/warp_state.json"
-
-async def _read_warp_state() -> dict:
-    try:
-        if os.path.exists(WARP_STATE_FILE):
-            async with aiofiles.open(WARP_STATE_FILE, "r") as f:
-                content = await f.read()
-            return json.loads(content)
-    except Exception:
-        pass
-    return {"enabled": False, "last_toggled": None}
-
-async def _write_warp_state(state: dict):
-    os.makedirs(os.path.dirname(WARP_STATE_FILE), exist_ok=True)
-    async with aiofiles.open(WARP_STATE_FILE, "w") as f:
-        await f.write(json.dumps(state, indent=2))
-
-@app.get("/api/warp/status")
-async def get_warp_status(_: str = Depends(require_auth)):
-    state = await _read_warp_state()
-    enabled = state.get("enabled", False)
-    connected = False
-
-    if enabled:
-        try:
-            process = await asyncio.create_subprocess_exec(
-                "warp-cli", "--accept-tos", "status",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            try:
-                stdout, _ = await asyncio.wait_for(process.communicate(), timeout=3.0)
-                output = stdout.decode().strip()
-                if "Status update: Connected" in output:
-                    connected = True
-            except asyncio.TimeoutError:
-                logger.error("WARP status check timed out after 3 seconds.")
-        except Exception as e:
-            logger.error(f"WARP status check failed: {e}")
-
-    return {
-        "enabled": enabled,
-        "connected": connected,
-        "debug_info": "OK" if not enabled else ("Connected" if connected else "Not connected")
-    }
-
-@app.post("/api/warp/toggle")
-async def toggle_warp(request: Request, _: str = Depends(require_auth)):
-    body = await request.json()
-    enabled = bool(body.get("enabled", False))
-    state = await _read_warp_state()
-    state["enabled"] = enabled
-    state["last_toggled"] = datetime.now(timezone.utc).isoformat()
-
-    saved_to_disk = True
-    try:
-        await _write_warp_state(state)
-    except (PermissionError, OSError) as e:
-        logger.warning(f"Cannot write WARP state to disk (read-only filesystem): {e}")
-        saved_to_disk = False
-
-    log_event("WARP", f"WARP tunnel {'enabled' if enabled else 'disabled'} by admin (persisted={saved_to_disk})")
-    return {
-        "ok": True,
-        "enabled": enabled,
-        "saved_to_disk": saved_to_disk,
-        "restart_required": True,
-    }
 
 @app.post("/api/restart")
 async def restart_app(_: str = Depends(require_auth)):
