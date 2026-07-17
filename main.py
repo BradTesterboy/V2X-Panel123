@@ -5377,32 +5377,36 @@ async def xhttp_downlink(session_id: str, request: Request):
         else:
             sess["last_seen"] = time.time()
 
-    async def downlink_gen():
+async def downlink_gen():
+    torn_down = False
+    try:
         try:
-            try:
-                await asyncio.wait_for(sess["tunnel_ready"].wait(), timeout=SESSION_IDLE_TIMEOUT)
-            except asyncio.TimeoutError:
-                logger.warning(f"XHTTP downlink timeout waiting for tunnel [{session_id[:8]}]")
-                return
+            await asyncio.wait_for(sess["tunnel_ready"].wait(), timeout=SESSION_IDLE_TIMEOUT)
+        except asyncio.TimeoutError:
+            logger.warning(f"XHTTP downlink timeout waiting for tunnel [{session_id[:8]}]; tcp_open={sess.get('tcp_open')}")
+            await _teardown_xhttp(session_id)
+            torn_down = True
+            return
 
-            if sess.get("closed"):
-                return
+        if sess.get("closed"):
+            return
 
-            if not sess["handshake_sent"]:
-                yield b"\x00\x00"
-                sess["handshake_sent"] = True
+        if not sess["handshake_sent"]:
+            yield b"\x00\x00"
+            sess["handshake_sent"] = True
 
-            while True:
-                chunk = await sess["down_q"].get()
-                if chunk is None:
-                    break
-                sess["last_seen"] = time.time()
-                yield chunk
-        except asyncio.CancelledError:
-            pass
-        except Exception:
-            pass
-        finally:
+        while True:
+            chunk = await sess["down_q"].get()
+            if chunk is None:
+                break
+            sess["last_seen"] = time.time()
+            yield chunk
+    except asyncio.CancelledError:
+        pass
+    except Exception:
+        pass
+    finally:
+        if not torn_down:
             await _teardown_xhttp(session_id)
 
     resp_headers = {
@@ -5652,7 +5656,7 @@ async def xhttp_stream_up(session_id: str, request: Request):
     return Response(status_code=200)
 
 
-@app.post("/{base_path:path}/")
+@app.post("/{base_path:path}")
 async def xhttp_stream_one(base_path: str, request: Request):
     ensure_xhttp_reaper()
     ip = get_real_remote_address(request)
@@ -10271,16 +10275,6 @@ async def panel_page(request: Request):
 
 @app.api_route("/{full_path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def dynamic_xhttp_router(full_path: str, request: Request):
-    """
-    Catch‑all router for XHTTP traffic.
-    Handles any custom path defined in an inbound, plus the default XHTTP path.
-    Supports three path formats:
-      - stream-one:        POST <custom_path>                         (exact base path)
-      - stream-up/packet-up:
-           <custom_path>/<mode>/<user_uuid>/<session_id>[/<seq>]
-      - legacy (no mode):  <custom_path>/<session_id>[/<seq>]         (kept for compatibility)
-    """
-
     base_paths = set()
     async with LINKS_LOCK:
         for uid, link in LINKS.items():
@@ -10298,7 +10292,7 @@ async def dynamic_xhttp_router(full_path: str, request: Request):
         base_paths.add(default_bp)
 
     for bp in base_paths:
-        if full_path.strip("/") == bp:
+        if full_path == bp or full_path == f"{bp}/":
             if request.method == "POST":
                 return await xhttp_stream_one(bp, request)
             raise HTTPException(status_code=405, detail="Method Not Allowed")
@@ -10321,8 +10315,8 @@ async def dynamic_xhttp_router(full_path: str, request: Request):
             parts = parts[2:]
         elif len(parts) == 2:
             parts = parts[1:]
-        else:
-            parts = []
+        if not parts:
+            raise HTTPException(status_code=404)
 
     if len(parts) == 1:
         session_id = parts[0]
